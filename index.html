@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Seya Shop Pro</title>
+    
+    <!-- Tailwind para el diseño -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- ESTILOS EXTRA PARA CORREGIR BORDES Y SCROLLBARS BLANCOS -->
+    <style>
+      /* 1. Fondo oscuro base para evitar líneas blancas al cargar o scrollear */
+      html, body {
+        background-color: #0f111a;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden; /* Evita desplazamiento lateral accidental */
+      }
+
+      /* 2. Personalizar la barra de scroll (Scrollbar) ESTILO MINIMALISTA */
+      ::-webkit-scrollbar {
+        width: 6px;  /* Mucho más delgada verticalmente */
+        height: 4px; /* Casi invisible horizontalmente (para los botones) */
+      }
+      
+      /* El carril del scroll (Fondo) - TRANSPARENTE */
+      /* Al ser transparente, elimina la sensación de "bloque" sólido a la derecha */
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      
+      /* La barrita que se mueve (el pulgar) */
+      ::-webkit-scrollbar-thumb {
+        background: #334155; /* Un gris azulado sutil que combina con el tema */
+        border-radius: 10px; /* Bordes totalmente redondos (pastilla) */
+      }
+
+      /* Cuando pasas el mouse por encima de la barra */
+      ::-webkit-scrollbar-thumb:hover {
+        background: #4b5563; /* Se aclara un poco al tocarla */
+      }
+    </style>
+  </head>
+  <body class="bg-[#0f111a]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
