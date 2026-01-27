@@ -115,9 +115,6 @@ const FinanzasPage = () => {
     // Si está pagado este ciclo, no hay recibos pendientes
     if (gasto.pagadoEsteMes && gasto.fechaPago) {
       const fechaPago = new Date(gasto.fechaPago);
-      const diaPago = fechaPago.getDate();
-      const mesPago = fechaPago.getMonth();
-      const añoPago = fechaPago.getFullYear();
       
       // Calcular si el pago cubre el ciclo actual
       // El ciclo va desde el día de corte del mes anterior hasta el día de corte del mes actual
