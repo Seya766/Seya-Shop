@@ -87,14 +87,26 @@ export type CategoriaGasto =
   | 'telefono' | 'tv' | 'transporte' | 'alimentacion' 
   | 'mercado' | 'salud' | 'educacion' | 'entretenimiento' | 'otros';
 
+// Historial de pago de un gasto fijo
+export interface PagoGastoFijo {
+  id: number;
+  fecha: string; // fecha completa YYYY-MM-DD
+  montoPagado: number; // monto real que pagaste
+  mes: string; // "YYYY-MM" el mes al que corresponde
+}
+
 export interface GastoFijo {
   id: number;
   nombre: string;
-  monto: number;
+  monto: number; // monto estimado/referencia
   categoria: CategoriaGasto;
   diaCorte: number;
   recordatorio: boolean;
   pagadoEsteMes: boolean;
+  mesPagado?: string; // formato "YYYY-MM" para saber en qué mes se pagó
+  fechaPago?: string; // fecha exacta del pago
+  montoPagadoEsteMes?: number; // monto real pagado este mes
+  historialPagos?: PagoGastoFijo[]; // historial de todos los pagos
   fechaCreacion: string;
 }
 
