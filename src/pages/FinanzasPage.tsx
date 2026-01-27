@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Wallet, Receipt, Plus, Trash2, Check, TrendingUp, TrendingDown,
   ArrowUpRight, ArrowDownRight, Calendar, Clock, AlertTriangle,
@@ -16,7 +16,7 @@ import {
   formatearDinero, formatearDineroCorto, getColombiaDateOnly,
   getColombiaISO, calcularDiasParaCorte
 } from '../utils/helpers';
-import type { GastoFijo, Transaccion, CategoriaGasto, Factura, HistorialAbono, MetaFinanciera, AporteMeta, Bolsillo } from '../utils/types';
+import type { GastoFijo, Transaccion, CategoriaGasto, Factura, HistorialAbono, MetaFinanciera, AporteMeta, Bolsillo, PagoGastoFijo } from '../utils/types';
 
 // =============================================
 // COMPONENTE PRINCIPAL
@@ -39,6 +39,11 @@ const FinanzasPage = () => {
   const [modalTransaccion, setModalTransaccion] = useState<{ visible: boolean; tipo: 'ingreso' | 'gasto' }>({ visible: false, tipo: 'gasto' });
   const [modalConfig, setModalConfig] = useState(false);
   const [modalEditarTransaccion, setModalEditarTransaccion] = useState<{ visible: boolean; transaccion: Transaccion | null }>({ visible: false, transaccion: null });
+  
+  // Modal para registrar pago de gasto fijo
+  const [modalPagoGasto, setModalPagoGasto] = useState<{ visible: boolean; gasto: GastoFijo | null }>({ visible: false, gasto: null });
+  const [formPagoGasto, setFormPagoGasto] = useState({ monto: '', fecha: getColombiaDateOnly() });
+  const [modalHistorialGasto, setModalHistorialGasto] = useState<{ visible: boolean; gasto: GastoFijo | null }>({ visible: false, gasto: null });
   
   // Modales de Metas
   const [modalMeta, setModalMeta] = useState(false);
@@ -95,6 +100,33 @@ const FinanzasPage = () => {
     { tipo: 'banco', nombre: 'Otro Banco', icono: '🏦', tasaDefault: 0 },
     { tipo: 'otro', nombre: 'Otro', icono: '📦', tasaDefault: 0 },
   ] as const;
+
+  // =============================================
+  // EFECTO: Resetear gastos fijos al cambiar de mes
+  // =============================================
+  useEffect(() => {
+    const mesActual = getColombiaDateOnly().slice(0, 7); // "YYYY-MM"
+    const gastosActualizados = gastosFijos.map(g => {
+      // Si está marcado como pagado pero el mes es diferente al actual, resetear
+      if (g.pagadoEsteMes && g.mesPagado && g.mesPagado !== mesActual) {
+        return { ...g, pagadoEsteMes: false, mesPagado: undefined };
+      }
+      // Si está pagado pero no tiene mesPagado (dato legacy), asumimos que es de un mes anterior
+      if (g.pagadoEsteMes && !g.mesPagado) {
+        return { ...g, pagadoEsteMes: false, mesPagado: undefined };
+      }
+      return g;
+    });
+    
+    // Solo actualizar si hay cambios
+    const haysCambios = gastosActualizados.some((g, i) => 
+      g.pagadoEsteMes !== gastosFijos[i].pagadoEsteMes
+    );
+    
+    if (haysCambios) {
+      setGastosFijos(gastosActualizados);
+    }
+  }, []); // Solo al montar el componente
 
   // =============================================
   // HELPER: Migrar metas legacy a sistema de bolsillos
@@ -681,9 +713,55 @@ const FinanzasPage = () => {
   };
 
   const togglePagado = (id: number) => {
+    const gasto = gastosFijos.find(g => g.id === id);
+    if (!gasto) return;
+    
+    // Si ya está pagado, preguntar si quiere desmarcar
+    if (gasto.pagadoEsteMes) {
+      if (confirm('¿Desmarcar como pagado este mes?')) {
+        setGastosFijos(gastosFijos.map(g => 
+          g.id === id ? { 
+            ...g, 
+            pagadoEsteMes: false,
+            mesPagado: undefined,
+            fechaPago: undefined,
+            montoPagadoEsteMes: undefined
+          } : g
+        ));
+      }
+    } else {
+      // Abrir modal para registrar el pago
+      setFormPagoGasto({ monto: gasto.monto.toString(), fecha: getColombiaDateOnly() });
+      setModalPagoGasto({ visible: true, gasto });
+    }
+  };
+
+  const registrarPagoGasto = () => {
+    if (!modalPagoGasto.gasto || !formPagoGasto.monto) return;
+    
+    const mesActual = getColombiaDateOnly().slice(0, 7);
+    const montoPagado = parseInt(formPagoGasto.monto.replace(/[^0-9]/g, ''));
+    
+    const nuevoPago: PagoGastoFijo = {
+      id: Date.now(),
+      fecha: formPagoGasto.fecha,
+      montoPagado,
+      mes: mesActual
+    };
+    
     setGastosFijos(gastosFijos.map(g => 
-      g.id === id ? { ...g, pagadoEsteMes: !g.pagadoEsteMes } : g
+      g.id === modalPagoGasto.gasto!.id ? { 
+        ...g, 
+        pagadoEsteMes: true,
+        mesPagado: mesActual,
+        fechaPago: formPagoGasto.fecha,
+        montoPagadoEsteMes: montoPagado,
+        historialPagos: [...(g.historialPagos || []), nuevoPago]
+      } : g
     ));
+    
+    setModalPagoGasto({ visible: false, gasto: null });
+    setFormPagoGasto({ monto: '', fecha: getColombiaDateOnly() });
   };
 
   const agregarTransaccion = () => {
@@ -1611,64 +1689,94 @@ const FinanzasPage = () => {
                   return (
                     <div 
                       key={gasto.id} 
-                      className={`bg-[#1a1f33] rounded-xl border p-4 flex items-center justify-between transition-all ${
+                      className={`bg-[#1a1f33] rounded-xl border p-4 transition-all ${
                         gasto.pagadoEsteMes ? 'border-emerald-500/30 opacity-75' : 
                         gasto.diasParaCorte <= 3 ? 'border-red-500/30' :
                         gasto.diasParaCorte <= 7 ? 'border-orange-500/30' : 'border-gray-800'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          gasto.pagadoEsteMes ? 'bg-emerald-900/30 text-emerald-400' : 'bg-gray-800 text-gray-400'
-                        }`}>
-                          <CatIcon size={18} />
-                        </div>
-                        <div>
-                          <p className={`font-medium ${gasto.pagadoEsteMes ? 'line-through text-gray-500' : ''}`}>
-                            {gasto.nombre}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {cat.nombre} • Día {gasto.diaCorte}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <p className="font-bold font-mono">{formatearDinero(gasto.monto)}</p>
-                          {!gasto.pagadoEsteMes && (
-                            <p className={`text-xs ${
-                              gasto.diasParaCorte <= 3 ? 'text-red-400' :
-                              gasto.diasParaCorte <= 7 ? 'text-orange-400' : 'text-gray-500'
-                            }`}>
-                              {gasto.diasParaCorte === 0 ? '¡Hoy!' : 
-                               gasto.diasParaCorte === 1 ? 'Mañana' : 
-                               `En ${gasto.diasParaCorte} días`}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            gasto.pagadoEsteMes ? 'bg-emerald-900/30 text-emerald-400' : 'bg-gray-800 text-gray-400'
+                          }`}>
+                            <CatIcon size={18} />
+                          </div>
+                          <div>
+                            <p className={`font-medium ${gasto.pagadoEsteMes ? 'line-through text-gray-500' : ''}`}>
+                              {gasto.nombre}
                             </p>
-                          )}
-                          {gasto.pagadoEsteMes && (
-                            <span className="text-xs text-emerald-400">✓ Pagado</span>
-                          )}
+                            <p className="text-xs text-gray-500">
+                              {cat.nombre} • Día {gasto.diaCorte}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => togglePagado(gasto.id)}
-                            className={`p-2 rounded-lg transition-all ${
-                              gasto.pagadoEsteMes 
-                                ? 'bg-emerald-600 text-white' 
-                                : 'bg-gray-800 text-gray-400 hover:text-emerald-400'
-                            }`}
-                          >
-                            <Check size={16} />
-                          </button>
-                          <button
-                            onClick={() => eliminarGastoFijo(gasto.id)}
-                            className="p-2 rounded-lg bg-gray-800 text-gray-500 hover:text-red-400"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="font-bold font-mono">{formatearDinero(gasto.monto)}</p>
+                            {!gasto.pagadoEsteMes && (
+                              <p className={`text-xs ${
+                                gasto.diasParaCorte <= 3 ? 'text-red-400' :
+                                gasto.diasParaCorte <= 7 ? 'text-orange-400' : 'text-gray-500'
+                              }`}>
+                                {gasto.diasParaCorte === 0 ? '¡Hoy!' : 
+                                 gasto.diasParaCorte === 1 ? 'Mañana' : 
+                                 `En ${gasto.diasParaCorte} días`}
+                              </p>
+                            )}
+                            {gasto.pagadoEsteMes && (
+                              <span className="text-xs text-emerald-400">✓ Pagado</span>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => togglePagado(gasto.id)}
+                              className={`p-2 rounded-lg transition-all ${
+                                gasto.pagadoEsteMes 
+                                  ? 'bg-emerald-600 text-white' 
+                                  : 'bg-gray-800 text-gray-400 hover:text-emerald-400'
+                              }`}
+                            >
+                              <Check size={16} />
+                            </button>
+                            {gasto.historialPagos && gasto.historialPagos.length > 0 && (
+                              <button
+                                onClick={() => setModalHistorialGasto({ visible: true, gasto })}
+                                className="p-2 rounded-lg bg-gray-800 text-gray-500 hover:text-blue-400"
+                                title="Ver historial"
+                              >
+                                <History size={16} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => eliminarGastoFijo(gasto.id)}
+                              className="p-2 rounded-lg bg-gray-800 text-gray-500 hover:text-red-400"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </div>
                       </div>
+                      
+                      {/* Info del pago de este mes */}
+                      {gasto.pagadoEsteMes && gasto.fechaPago && (
+                        <div className="mt-3 pt-3 border-t border-gray-700/50 flex justify-between items-center text-xs">
+                          <span className="text-gray-500">
+                            Pagado el {gasto.fechaPago}
+                          </span>
+                          {gasto.montoPagadoEsteMes && (
+                            <span className="font-mono text-emerald-400">
+                              {formatearDinero(gasto.montoPagadoEsteMes)}
+                              {gasto.montoPagadoEsteMes !== gasto.monto && (
+                                <span className={`ml-1 ${gasto.montoPagadoEsteMes > gasto.monto ? 'text-red-400' : 'text-emerald-400'}`}>
+                                  ({gasto.montoPagadoEsteMes > gasto.monto ? '+' : ''}{formatearDinero(gasto.montoPagadoEsteMes - gasto.monto)})
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2502,6 +2610,118 @@ const FinanzasPage = () => {
                 Guardar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Registrar Pago de Gasto Fijo */}
+      {modalPagoGasto.visible && modalPagoGasto.gasto && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-[#1a1f33] to-[#0f1219] w-full max-w-md rounded-2xl border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <div className="p-2 bg-emerald-500/20 rounded-lg">
+                  <Check className="text-emerald-400" size={18} />
+                </div>
+                Registrar Pago
+              </h3>
+              <button onClick={() => setModalPagoGasto({ visible: false, gasto: null })} className="p-2 hover:bg-gray-800 rounded-lg text-gray-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-3 bg-gray-800/50 rounded-xl mb-4">
+              <p className="text-sm text-gray-400">Pagando:</p>
+              <p className="font-bold text-white">{modalPagoGasto.gasto.nombre}</p>
+              <p className="text-xs text-gray-500">Monto estimado: {formatearDinero(modalPagoGasto.gasto.monto)}</p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1.5 font-medium">¿Cuánto pagaste realmente?</label>
+                <input
+                  type="tel"
+                  placeholder="0"
+                  className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 font-mono text-lg focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                  value={formPagoGasto.monto}
+                  onChange={e => setFormPagoGasto({...formPagoGasto, monto: e.target.value.replace(/[^0-9]/g, '')})}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 block mb-1.5 font-medium">Fecha del pago</label>
+                <input
+                  type="date"
+                  className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-emerald-500/50 transition-all"
+                  value={formPagoGasto.fecha}
+                  onChange={e => setFormPagoGasto({...formPagoGasto, fecha: e.target.value})}
+                />
+              </div>
+
+              <button
+                onClick={registrarPagoGasto}
+                disabled={!formPagoGasto.monto}
+                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 disabled:shadow-none"
+              >
+                Confirmar Pago
+              </button>
+
+              {/* Historial de pagos anteriores */}
+              {modalPagoGasto.gasto.historialPagos && modalPagoGasto.gasto.historialPagos.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-700/50">
+                  <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                    <History size={12} />
+                    Últimos pagos:
+                  </p>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {modalPagoGasto.gasto.historialPagos.slice(-3).reverse().map(pago => (
+                      <div key={pago.id} className="flex justify-between text-xs p-2 bg-gray-800/30 rounded-lg">
+                        <span className="text-gray-400">{pago.fecha}</span>
+                        <span className="font-mono text-white">{formatearDinero(pago.montoPagado)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Historial de Pagos de Gasto Fijo */}
+      {modalHistorialGasto.visible && modalHistorialGasto.gasto && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-[#1a1f33] to-[#0f1219] w-full max-w-md rounded-2xl border border-gray-700/50 shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <div className="p-2 bg-blue-500/20 rounded-lg">
+                  <History className="text-blue-400" size={18} />
+                </div>
+                Historial de {modalHistorialGasto.gasto.nombre}
+              </h3>
+              <button onClick={() => setModalHistorialGasto({ visible: false, gasto: null })} className="p-2 hover:bg-gray-800 rounded-lg text-gray-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            {modalHistorialGasto.gasto.historialPagos && modalHistorialGasto.gasto.historialPagos.length > 0 ? (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {modalHistorialGasto.gasto.historialPagos.slice().reverse().map(pago => (
+                  <div key={pago.id} className="flex justify-between items-center p-3 bg-gray-800/30 rounded-xl border border-gray-700/30">
+                    <div>
+                      <p className="text-sm text-white">{pago.fecha}</p>
+                      <p className="text-xs text-gray-500">Mes: {pago.mes}</p>
+                    </div>
+                    <span className="font-mono font-bold text-emerald-400">{formatearDinero(pago.montoPagado)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <History size={32} className="mx-auto mb-2 opacity-50" />
+                <p>No hay pagos registrados</p>
+              </div>
+            )}
           </div>
         </div>
       )}
