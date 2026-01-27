@@ -44,6 +44,8 @@ const FinanzasPage = () => {
   const [modalPagoGasto, setModalPagoGasto] = useState<{ visible: boolean; gasto: GastoFijo | null }>({ visible: false, gasto: null });
   const [formPagoGasto, setFormPagoGasto] = useState({ monto: '', fecha: getColombiaDateOnly() });
   const [modalHistorialGasto, setModalHistorialGasto] = useState<{ visible: boolean; gasto: GastoFijo | null }>({ visible: false, gasto: null });
+  const [modalEditarGasto, setModalEditarGasto] = useState<{ visible: boolean; gasto: GastoFijo | null }>({ visible: false, gasto: null });
+  const [formEditarGasto, setFormEditarGasto] = useState({ nombre: '', monto: '', categoria: 'servicios' as CategoriaGasto, diaCorte: '1' });
   
   // Modales de Metas
   const [modalMeta, setModalMeta] = useState(false);
@@ -102,28 +104,114 @@ const FinanzasPage = () => {
   ] as const;
 
   // =============================================
-  // EFECTO: Resetear gastos fijos al cambiar de mes
+  // HELPER: Calcular recibos pendientes de un gasto fijo
+  // =============================================
+  const calcularRecibosPendientes = useCallback((gasto: GastoFijo): { cantidad: number; montoEstimado: number } => {
+    const hoy = new Date(getColombiaDateOnly());
+    const diaHoy = hoy.getDate();
+    const mesHoy = hoy.getMonth();
+    const añoHoy = hoy.getFullYear();
+    
+    // Si está pagado este ciclo, no hay recibos pendientes
+    if (gasto.pagadoEsteMes && gasto.fechaPago) {
+      const fechaPago = new Date(gasto.fechaPago);
+      const diaPago = fechaPago.getDate();
+      const mesPago = fechaPago.getMonth();
+      const añoPago = fechaPago.getFullYear();
+      
+      // Calcular si el pago cubre el ciclo actual
+      // El ciclo va desde el día de corte del mes anterior hasta el día de corte del mes actual
+      let inicioClicloActual: Date;
+      if (diaHoy >= gasto.diaCorte) {
+        // Estamos después del corte, el ciclo empezó este mes
+        inicioClicloActual = new Date(añoHoy, mesHoy, gasto.diaCorte);
+      } else {
+        // Estamos antes del corte, el ciclo empezó el mes pasado
+        inicioClicloActual = new Date(añoHoy, mesHoy - 1, gasto.diaCorte);
+      }
+      
+      // Si el pago es después del inicio del ciclo actual, está al día
+      if (fechaPago >= inicioClicloActual) {
+        return { cantidad: 0, montoEstimado: 0 };
+      }
+    }
+    
+    // Calcular cuántos ciclos han pasado sin pago
+    let ultimaFechaReferencia: Date;
+    
+    if (gasto.fechaPago) {
+      ultimaFechaReferencia = new Date(gasto.fechaPago);
+    } else if (gasto.historialPagos && gasto.historialPagos.length > 0) {
+      const ultimoPago = gasto.historialPagos[gasto.historialPagos.length - 1];
+      ultimaFechaReferencia = new Date(ultimoPago.fecha);
+    } else {
+      // Nunca ha pagado, usar fecha de creación
+      ultimaFechaReferencia = new Date(gasto.fechaCreacion.split('T')[0]);
+    }
+    
+    // Contar ciclos desde la última referencia hasta hoy
+    let ciclos = 0;
+    let fechaCorte = new Date(ultimaFechaReferencia);
+    fechaCorte.setDate(gasto.diaCorte);
+    
+    // Si la fecha de corte es antes de la referencia, ir al siguiente mes
+    if (fechaCorte <= ultimaFechaReferencia) {
+      fechaCorte.setMonth(fechaCorte.getMonth() + 1);
+    }
+    
+    while (fechaCorte <= hoy) {
+      ciclos++;
+      fechaCorte.setMonth(fechaCorte.getMonth() + 1);
+    }
+    
+    return { 
+      cantidad: Math.max(ciclos, gasto.pagadoEsteMes ? 0 : 1), 
+      montoEstimado: Math.max(ciclos, gasto.pagadoEsteMes ? 0 : 1) * gasto.monto 
+    };
+  }, []);
+
+  // =============================================
+  // EFECTO: Resetear gastos fijos cuando pasa la fecha de corte
   // =============================================
   useEffect(() => {
-    const mesActual = getColombiaDateOnly().slice(0, 7); // "YYYY-MM"
+    const hoy = new Date(getColombiaDateOnly());
+    const diaHoy = hoy.getDate();
+    
     const gastosActualizados = gastosFijos.map(g => {
-      // Si está marcado como pagado pero el mes es diferente al actual, resetear
-      if (g.pagadoEsteMes && g.mesPagado && g.mesPagado !== mesActual) {
-        return { ...g, pagadoEsteMes: false, mesPagado: undefined };
+      if (!g.pagadoEsteMes) return g; // Ya está pendiente
+      if (!g.fechaPago) return g; // No tiene fecha de pago registrada
+      
+      const fechaPago = new Date(g.fechaPago);
+      const mesHoy = hoy.getMonth();
+      const añoHoy = hoy.getFullYear();
+      
+      // Calcular el inicio del ciclo actual basado en el día de corte
+      let inicioClicloActual: Date;
+      if (diaHoy >= g.diaCorte) {
+        inicioClicloActual = new Date(añoHoy, mesHoy, g.diaCorte);
+      } else {
+        inicioClicloActual = new Date(añoHoy, mesHoy - 1, g.diaCorte);
       }
-      // Si está pagado pero no tiene mesPagado (dato legacy), asumimos que es de un mes anterior
-      if (g.pagadoEsteMes && !g.mesPagado) {
-        return { ...g, pagadoEsteMes: false, mesPagado: undefined };
+      
+      // Si el pago fue antes del inicio del ciclo actual, resetear
+      if (fechaPago < inicioClicloActual) {
+        return { 
+          ...g, 
+          pagadoEsteMes: false, 
+          mesPagado: undefined,
+          fechaPago: undefined,
+          montoPagadoEsteMes: undefined
+        };
       }
+      
       return g;
     });
     
-    // Solo actualizar si hay cambios
-    const haysCambios = gastosActualizados.some((g, i) => 
+    const hayCambios = gastosActualizados.some((g, i) => 
       g.pagadoEsteMes !== gastosFijos[i].pagadoEsteMes
     );
     
-    if (haysCambios) {
+    if (hayCambios) {
       setGastosFijos(gastosActualizados);
     }
   }, []); // Solo al montar el componente
@@ -710,6 +798,32 @@ const FinanzasPage = () => {
     if (confirm('¿Eliminar este gasto fijo?')) {
       setGastosFijos(gastosFijos.filter(g => g.id !== id));
     }
+  };
+
+  const abrirEditarGasto = (gasto: GastoFijo) => {
+    setFormEditarGasto({
+      nombre: gasto.nombre,
+      monto: gasto.monto.toString(),
+      categoria: gasto.categoria,
+      diaCorte: gasto.diaCorte.toString()
+    });
+    setModalEditarGasto({ visible: true, gasto });
+  };
+
+  const guardarEdicionGasto = () => {
+    if (!modalEditarGasto.gasto || !formEditarGasto.nombre || !formEditarGasto.monto) return;
+    
+    setGastosFijos(gastosFijos.map(g => 
+      g.id === modalEditarGasto.gasto!.id ? {
+        ...g,
+        nombre: formEditarGasto.nombre,
+        monto: parseInt(formEditarGasto.monto.replace(/[^0-9]/g, '')),
+        categoria: formEditarGasto.categoria,
+        diaCorte: parseInt(formEditarGasto.diaCorte) || 1
+      } : g
+    ));
+    
+    setModalEditarGasto({ visible: false, gasto: null });
   };
 
   const togglePagado = (id: number) => {
@@ -1685,16 +1799,33 @@ const FinanzasPage = () => {
                 {gastosFijosConDias.map(gasto => {
                   const cat = CATEGORIAS_GASTO[gasto.categoria] || CATEGORIAS_GASTO.otros;
                   const CatIcon = cat.icon;
+                  const recibosPendientes = calcularRecibosPendientes(gasto);
 
                   return (
                     <div 
                       key={gasto.id} 
                       className={`bg-[#1a1f33] rounded-xl border p-4 transition-all ${
+                        recibosPendientes.cantidad > 1 ? 'border-red-500/50 shadow-lg shadow-red-500/10' :
                         gasto.pagadoEsteMes ? 'border-emerald-500/30 opacity-75' : 
                         gasto.diasParaCorte <= 3 ? 'border-red-500/30' :
                         gasto.diasParaCorte <= 7 ? 'border-orange-500/30' : 'border-gray-800'
                       }`}
                     >
+                      {/* Alerta de recibos atrasados */}
+                      {recibosPendientes.cantidad > 1 && (
+                        <div className="mb-3 p-2 bg-red-900/30 border border-red-500/30 rounded-lg flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle size={16} className="text-red-400" />
+                            <span className="text-sm text-red-400 font-medium">
+                              ¡Debes {recibosPendientes.cantidad} recibos!
+                            </span>
+                          </div>
+                          <span className="font-mono font-bold text-red-400">
+                            ≈ {formatearDinero(recibosPendientes.montoEstimado)}
+                          </span>
+                        </div>
+                      )}
+                      
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -1707,7 +1838,7 @@ const FinanzasPage = () => {
                               {gasto.nombre}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {cat.nombre} • Día {gasto.diaCorte}
+                              {cat.nombre} • Corte día {gasto.diaCorte}
                             </p>
                           </div>
                         </div>
@@ -1715,13 +1846,14 @@ const FinanzasPage = () => {
                         <div className="flex items-center gap-4">
                           <div className="text-right">
                             <p className="font-bold font-mono">{formatearDinero(gasto.monto)}</p>
-                            {!gasto.pagadoEsteMes && (
+                            {!gasto.pagadoEsteMes && recibosPendientes.cantidad <= 1 && (
                               <p className={`text-xs ${
                                 gasto.diasParaCorte <= 3 ? 'text-red-400' :
                                 gasto.diasParaCorte <= 7 ? 'text-orange-400' : 'text-gray-500'
                               }`}>
                                 {gasto.diasParaCorte === 0 ? '¡Hoy!' : 
                                  gasto.diasParaCorte === 1 ? 'Mañana' : 
+                                 gasto.diasParaCorte < 0 ? `Hace ${Math.abs(gasto.diasParaCorte)} días` :
                                  `En ${gasto.diasParaCorte} días`}
                               </p>
                             )}
@@ -1737,8 +1869,16 @@ const FinanzasPage = () => {
                                   ? 'bg-emerald-600 text-white' 
                                   : 'bg-gray-800 text-gray-400 hover:text-emerald-400'
                               }`}
+                              title={gasto.pagadoEsteMes ? 'Desmarcar pago' : 'Registrar pago'}
                             >
                               <Check size={16} />
+                            </button>
+                            <button
+                              onClick={() => abrirEditarGasto(gasto)}
+                              className="p-2 rounded-lg bg-gray-800 text-gray-500 hover:text-purple-400"
+                              title="Editar"
+                            >
+                              <Edit2 size={16} />
                             </button>
                             {gasto.historialPagos && gasto.historialPagos.length > 0 && (
                               <button
@@ -1752,6 +1892,7 @@ const FinanzasPage = () => {
                             <button
                               onClick={() => eliminarGastoFijo(gasto.id)}
                               className="p-2 rounded-lg bg-gray-800 text-gray-500 hover:text-red-400"
+                              title="Eliminar"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -2722,6 +2863,83 @@ const FinanzasPage = () => {
                 <p>No hay pagos registrados</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Gasto Fijo */}
+      {modalEditarGasto.visible && modalEditarGasto.gasto && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-[#1a1f33] to-[#0f1219] w-full max-w-md rounded-2xl border border-purple-500/30 shadow-2xl shadow-purple-500/10 p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <div className="p-2 bg-purple-500/20 rounded-lg">
+                  <Edit2 className="text-purple-400" size={18} />
+                </div>
+                Editar Gasto Fijo
+              </h3>
+              <button onClick={() => setModalEditarGasto({ visible: false, gasto: null })} className="p-2 hover:bg-gray-800 rounded-lg text-gray-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1.5 font-medium">Nombre</label>
+                <input
+                  type="text"
+                  placeholder="Ej: Arriendo, Internet..."
+                  className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                  value={formEditarGasto.nombre}
+                  onChange={e => setFormEditarGasto({...formEditarGasto, nombre: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-gray-500 block mb-1.5 font-medium">Monto estimado mensual</label>
+                <input
+                  type="tel"
+                  placeholder="0"
+                  className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 font-mono text-lg focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                  value={formEditarGasto.monto}
+                  onChange={e => setFormEditarGasto({...formEditarGasto, monto: e.target.value.replace(/[^0-9]/g, '')})}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1.5 font-medium">Categoría</label>
+                  <select
+                    className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-purple-500/50 transition-all"
+                    value={formEditarGasto.categoria}
+                    onChange={e => setFormEditarGasto({...formEditarGasto, categoria: e.target.value as CategoriaGasto})}
+                  >
+                    {Object.entries(CATEGORIAS_GASTO).map(([key, cat]) => (
+                      <option key={key} value={key}>{cat.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1.5 font-medium">Día de corte</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-purple-500/50 transition-all"
+                    value={formEditarGasto.diaCorte}
+                    onChange={e => setFormEditarGasto({...formEditarGasto, diaCorte: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={guardarEdicionGasto}
+                disabled={!formEditarGasto.nombre || !formEditarGasto.monto}
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 disabled:shadow-none"
+              >
+                Guardar Cambios
+              </button>
+            </div>
           </div>
         </div>
       )}
