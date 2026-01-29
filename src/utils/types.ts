@@ -49,6 +49,11 @@ export interface Factura {
   historialAbonosProveedor?: HistorialAbonoProveedor[];
   // Historial de garantías
   historialGarantia?: HistorialGarantia[];
+  // Campos para garantía mejorada
+  fechaGarantia?: string | null; // Fecha cuando se reportó la garantía
+  garantiaResuelta?: boolean; // Si ya se resolvió
+  fechaResolucionGarantia?: string | null; // Fecha cuando se resolvió
+  motivoGarantia?: string | null; // Descripción del problema
 }
 
 export interface ResumenRevendedor {
