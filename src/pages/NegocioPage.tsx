@@ -381,22 +381,41 @@ const FacturaCard = memo(({
                 <button 
                   onClick={() => onAplicarGarantia(f.id)} 
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg transition-colors border ${
-                    f.usoGarantia 
-                      ? 'bg-red-900/40 text-red-400 border-red-500/30 hover:bg-red-900/60' 
-                      : 'text-gray-500 hover:text-orange-400 border-transparent hover:bg-orange-500/10 hover:border-orange-500/20'
+                    f.usoGarantia && f.garantiaResuelta
+                      ? 'bg-emerald-900/40 text-emerald-400 border-emerald-500/30 hover:bg-emerald-900/60'
+                      : f.usoGarantia 
+                        ? 'bg-red-900/40 text-red-400 border-red-500/30 hover:bg-red-900/60' 
+                        : 'text-gray-500 hover:text-orange-400 border-transparent hover:bg-orange-500/10 hover:border-orange-500/20'
                   }`}
-                  title={f.usoGarantia ? 'Clic para quitar garantía' : 'Marcar como garantía'}
+                  title={
+                    f.usoGarantia && f.garantiaResuelta 
+                      ? 'Garantía resuelta - Clic para quitar' 
+                      : f.usoGarantia 
+                        ? 'Clic para resolver garantía' 
+                        : 'Reportar problema/garantía'
+                  }
                 >
-                  <RefreshCw size={12} /> 
-                  {f.usoGarantia ? 'Garantía ✓' : 'Falla'}
+                  {f.usoGarantia && f.garantiaResuelta ? (
+                    <><ShieldCheck size={12} /> Resuelta ✓</>
+                  ) : f.usoGarantia ? (
+                    <><RefreshCw size={12} /> Pendiente</>
+                  ) : (
+                    <><RefreshCw size={12} /> Falla</>
+                  )}
                 </button>
               )}
               
               {/* Info de garantía usada */}
               {f.usoGarantia && (
-                <span className="text-red-400/80 text-[10px] flex items-center gap-1">
-                  {(f as any).fechaGarantia && <span>({(f as any).fechaGarantia})</span>}
-                  {f.costoGarantia > 0 && <span className="text-red-300">Devuelto: {formatearDineroCorto(f.costoGarantia)}</span>}
+                <span className={`text-[10px] flex items-center gap-1 ${f.garantiaResuelta ? 'text-emerald-400/80' : 'text-red-400/80'}`}>
+                  {f.garantiaResuelta ? (
+                    <>Resuelta el {f.fechaResolucionGarantia}</>
+                  ) : (
+                    <>
+                      {f.fechaGarantia && <span>Reportada: {f.fechaGarantia}</span>}
+                      {f.costoGarantia && f.costoGarantia > 0 && <span className="text-red-300">• Devuelto: {formatearDineroCorto(f.costoGarantia)}</span>}
+                    </>
+                  )}
                 </span>
               )}
               
@@ -441,18 +460,7 @@ FacturaCard.displayName = 'FacturaCard';
 // MAIN COMPONENT
 // =============================================
 const NegocioPage = () => {
-  const { facturas, setFacturas, revendedoresOcultos, setRevendedoresOcultos, pagosRevendedores, setPagosRevendedores } = useData();
-
-  // Estado para facturas ocultas (persiste en localStorage)
-  const [facturasOcultas, setFacturasOcultas] = useState<number[]>(() => {
-    const saved = localStorage.getItem('facturasOcultas');
-    return saved ? JSON.parse(saved) : [];
-  });
-  
-  // Guardar facturas ocultas en localStorage
-  useEffect(() => {
-    localStorage.setItem('facturasOcultas', JSON.stringify(facturasOcultas));
-  }, [facturasOcultas]);
+  const { facturas, setFacturas, revendedoresOcultos, setRevendedoresOcultos, pagosRevendedores, setPagosRevendedores, facturasOcultas, setFacturasOcultas } = useData();
 
   // Toggle para mostrar/ocultar facturas ocultas en la lista
   const [mostrarOcultas, setMostrarOcultas] = useState(false);
@@ -486,6 +494,21 @@ const NegocioPage = () => {
 
   const [vistaEstadisticas, setVistaEstadisticas] = useState(false);
   const [vistaRevendedores, setVistaRevendedores] = useState(false);
+
+  // Buscador de revendedores
+  const [busquedaRevendedor, setBusquedaRevendedor] = useState('');
+
+  // Modal para gestionar garantía
+  const [modalGarantia, setModalGarantia] = useState<{
+    visible: boolean;
+    factura: Factura | null;
+    modo: 'reportar' | 'resolver';
+  }>({ visible: false, factura: null, modo: 'reportar' });
+  const [formGarantia, setFormGarantia] = useState({
+    motivo: '',
+    costoDevolucion: '',
+    fechaResolucion: getColombiaDateOnly()
+  });
 
   const [filtro, setFiltro] = useState('porPagar'); 
   const [busqueda, setBusqueda] = useState('');
@@ -825,7 +848,7 @@ const NegocioPage = () => {
       if (filtro === 'porPagar') return !f.pagadoAProveedor;
       if (filtro === 'porCobrar') return f.pagadoAProveedor && !f.cobradoACliente;
       if (filtro === 'finalizados') return f.cobradoACliente;
-      if (filtro === 'garantias') return f.usoGarantia;
+      if (filtro === 'garantias') return f.usoGarantia && !f.garantiaResuelta; // Solo garantías pendientes
       if (filtro === 'ocultas') return facturasOcultas.includes(f.id);
       
       return true;
@@ -1034,20 +1057,35 @@ const NegocioPage = () => {
     setEditingId(null);
   }, []);
 
+  // Abrir modal para reportar o resolver garantía
   const aplicarGarantia = useCallback((id: number) => {
     const factura = facturas.find(f => f.id === id);
     if (!factura) return;
     
-    // Si ya tiene garantía, preguntar si quiere quitarla
-    if (factura.usoGarantia) {
-      if (window.confirm('¿Quitar la garantía de esta factura?')) {
+    // Si ya tiene garantía activa y no está resuelta, abrir modal para resolver
+    if (factura.usoGarantia && !factura.garantiaResuelta) {
+      setFormGarantia({
+        motivo: factura.motivoGarantia || '',
+        costoDevolucion: (factura.costoGarantia || 0).toString(),
+        fechaResolucion: getColombiaDateOnly()
+      });
+      setModalGarantia({ visible: true, factura, modo: 'resolver' });
+      return;
+    }
+    
+    // Si ya está resuelta, preguntar si quiere quitar todo
+    if (factura.usoGarantia && factura.garantiaResuelta) {
+      if (window.confirm('Esta garantía ya fue resuelta. ¿Quitar la garantía completamente?')) {
         setFacturas(prev => prev.map(f => {
           if (f.id === id) {
             return { 
               ...f, 
               usoGarantia: false, 
               costoGarantia: 0,
-              fechaGarantia: null
+              fechaGarantia: null,
+              garantiaResuelta: false,
+              fechaResolucionGarantia: null,
+              motivoGarantia: null
             };
           }
           return f;
@@ -1056,24 +1094,56 @@ const NegocioPage = () => {
       return;
     }
     
-    // Marcar garantía nueva
-    const devolucion = prompt('¿Devolviste dinero al cliente? (Si no, escribe 0)', '0');
-    if (devolucion === null) return; // Canceló
+    // Abrir modal para reportar garantía nueva
+    setFormGarantia({
+      motivo: '',
+      costoDevolucion: '0',
+      fechaResolucion: getColombiaDateOnly()
+    });
+    setModalGarantia({ visible: true, factura, modo: 'reportar' });
+  }, [facturas, setFacturas]);
+
+  // Guardar reporte de garantía
+  const guardarReporteGarantia = useCallback(() => {
+    if (!modalGarantia.factura) return;
     
-    const montoDevuelto = parseFloat(devolucion.replace(/[^0-9]/g, '')) || 0;
+    const montoDevuelto = parseInt(formGarantia.costoDevolucion.replace(/[^0-9]/g, '')) || 0;
     
     setFacturas(prev => prev.map(f => {
-      if (f.id === id) {
+      if (f.id === modalGarantia.factura!.id) {
         return { 
           ...f, 
           usoGarantia: true, 
           costoGarantia: montoDevuelto,
-          fechaGarantia: getColombiaDateOnly()
+          fechaGarantia: getColombiaDateOnly(),
+          garantiaResuelta: false,
+          fechaResolucionGarantia: null,
+          motivoGarantia: formGarantia.motivo || null
         };
       }
       return f;
     }));
-  }, [facturas, setFacturas]);
+    
+    setModalGarantia({ visible: false, factura: null, modo: 'reportar' });
+  }, [modalGarantia.factura, formGarantia, setFacturas]);
+
+  // Marcar garantía como resuelta
+  const resolverGarantia = useCallback(() => {
+    if (!modalGarantia.factura) return;
+    
+    setFacturas(prev => prev.map(f => {
+      if (f.id === modalGarantia.factura!.id) {
+        return { 
+          ...f, 
+          garantiaResuelta: true,
+          fechaResolucionGarantia: formGarantia.fechaResolucion
+        };
+      }
+      return f;
+    }));
+    
+    setModalGarantia({ visible: false, factura: null, modo: 'reportar' });
+  }, [modalGarantia.factura, formGarantia.fechaResolucion, setFacturas]);
 
   const eliminarFactura = useCallback((id: number) => {
     if (window.confirm('¿Borrar registro?')) {
@@ -1081,7 +1151,7 @@ const NegocioPage = () => {
       // También eliminar de ocultas si estaba
       setFacturasOcultas(prev => prev.filter(fId => fId !== id));
     }
-  }, [setFacturas]);
+  }, [setFacturas, setFacturasOcultas]);
 
   const togglePagoProveedor = useCallback((id: number) => {
     setFacturas(prev => prev.map(f => {
@@ -2564,6 +2634,98 @@ const NegocioPage = () => {
           )}
         </AnimatePresence>
 
+        {/* Modal Garantía */}
+        <AnimatePresence>
+          {modalGarantia.visible && modalGarantia.factura && (
+            <motion.div 
+              className="fixed inset-0 z-[130] flex items-center justify-center p-4"
+              variants={backdropVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <div className="absolute inset-0 bg-black/70" onClick={() => setModalGarantia({ visible: false, factura: null, modo: 'reportar' })} />
+              <motion.div 
+                className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] w-full max-w-md rounded-2xl border border-red-500/30 shadow-2xl p-6"
+                variants={modalVariants}
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <div className={`p-3 rounded-xl ${modalGarantia.modo === 'reportar' ? 'bg-gradient-to-br from-red-500 to-orange-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
+                    {modalGarantia.modo === 'reportar' ? <ShieldAlert size={24} className="text-white" /> : <ShieldCheck size={24} className="text-white" />}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">
+                      {modalGarantia.modo === 'reportar' ? 'Reportar Garantía' : 'Resolver Garantía'}
+                    </h3>
+                    <p className="text-gray-400 text-sm">{modalGarantia.factura.cliente} - {modalGarantia.factura.empresa}</p>
+                  </div>
+                </div>
+                
+                {modalGarantia.modo === 'reportar' ? (
+                  <div className="bg-[#0a0d14] p-5 rounded-xl border border-gray-700/30 space-y-4">
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-2 font-medium">¿Cuál es el problema?</label>
+                      <textarea 
+                        className="w-full bg-[#1a1f33] border border-gray-600 rounded-xl p-3 text-white focus:border-red-500/50 transition-colors outline-none resize-none" 
+                        placeholder="Describe el problema..."
+                        rows={3}
+                        value={formGarantia.motivo}
+                        onChange={(e) => setFormGarantia(prev => ({ ...prev, motivo: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-2 font-medium">¿Devolviste dinero al cliente? (0 si no)</label>
+                      <input 
+                        type="tel" 
+                        className="w-full bg-[#1a1f33] border border-gray-600 rounded-xl p-3 text-white font-mono focus:border-red-500/50 transition-colors outline-none" 
+                        placeholder="$ 0" 
+                        value={formGarantia.costoDevolucion} 
+                        onChange={(e) => setFormGarantia(prev => ({ ...prev, costoDevolucion: e.target.value.replace(/[^0-9]/g, '') }))} 
+                      />
+                    </div>
+                    <MagneticButton 
+                      onClick={guardarReporteGarantia} 
+                      className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <ShieldAlert size={18} /> Reportar Garantía
+                    </MagneticButton>
+                  </div>
+                ) : (
+                  <div className="bg-[#0a0d14] p-5 rounded-xl border border-gray-700/30 space-y-4">
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                      <p className="text-xs text-red-400 font-medium mb-1">Problema reportado:</p>
+                      <p className="text-white">{modalGarantia.factura.motivoGarantia || 'Sin descripción'}</p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Reportado el {modalGarantia.factura.fechaGarantia}
+                        {modalGarantia.factura.costoGarantia ? ` • Devolución: ${formatearDinero(modalGarantia.factura.costoGarantia)}` : ''}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-2 font-medium">Fecha de resolución</label>
+                      <input 
+                        type="date" 
+                        className="w-full bg-[#1a1f33] border border-gray-600 rounded-xl p-3 text-white focus:border-emerald-500/50 transition-colors outline-none" 
+                        value={formGarantia.fechaResolucion} 
+                        onChange={(e) => setFormGarantia(prev => ({ ...prev, fechaResolucion: e.target.value }))} 
+                      />
+                    </div>
+                    <MagneticButton 
+                      onClick={resolverGarantia} 
+                      className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <ShieldCheck size={18} /> Marcar como Resuelta
+                    </MagneticButton>
+                  </div>
+                )}
+                
+                <button onClick={() => setModalGarantia({ visible: false, factura: null, modo: 'reportar' })} className="mt-5 w-full text-gray-500 text-sm hover:text-white transition-colors py-2">
+                  Cancelar
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Modal Pago Revendedor - z-index más alto */}
         <AnimatePresence>
           {modalRevendedor.visible && (
@@ -2765,26 +2927,43 @@ const NegocioPage = () => {
                 className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] w-full max-w-2xl rounded-2xl border border-gray-700/30 shadow-2xl max-h-[90vh] overflow-hidden"
                 variants={modalVariants}
               >
-                <div className="p-6 border-b border-gray-700/30 flex justify-between items-center sticky top-0 bg-[#1a1f33]/95 backdrop-blur-sm z-10">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
-                      <Users size={22} className="text-white" />
+                <div className="p-6 border-b border-gray-700/30 sticky top-0 bg-[#1a1f33]/95 backdrop-blur-sm z-10 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl">
+                        <Users size={22} className="text-white" />
+                      </div>
+                      <h2 className="text-xl font-bold text-white">Cuentas por Cobrar</h2>
                     </div>
-                    <h2 className="text-xl font-bold text-white">Cuentas por Cobrar</h2>
+                    <button onClick={() => setVistaRevendedores(false)} className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-gray-400 hover:text-white transition-colors">
+                      <X size={20} />
+                    </button>
                   </div>
-                  <button onClick={() => setVistaRevendedores(false)} className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-gray-400 hover:text-white transition-colors">
-                    <X size={20} />
-                  </button>
+                  {/* Buscador de revendedores */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 text-gray-500 w-4 h-4" />
+                    <input 
+                      type="text" 
+                      placeholder="Buscar revendedor..." 
+                      className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none" 
+                      value={busquedaRevendedor} 
+                      onChange={e => setBusquedaRevendedor(e.target.value)} 
+                    />
+                  </div>
                 </div>
                 
-                <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-100px)]">
-                  {revendedoresConDeuda.length > 0 && (
+                <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-160px)]">
+                  {revendedoresConDeuda.filter(r => 
+                    !busquedaRevendedor || r.nombre.toLowerCase().includes(busquedaRevendedor.toLowerCase())
+                  ).length > 0 && (
                     <>
                       <h3 className="text-sm font-bold text-orange-400 uppercase flex items-center gap-2">
                         <AlertTriangle size={14} /> Con Deuda
                       </h3>
                       <div className="space-y-4">
-                        {revendedoresConDeuda.map((rev, idx) => {
+                        {revendedoresConDeuda
+                          .filter(r => !busquedaRevendedor || r.nombre.toLowerCase().includes(busquedaRevendedor.toLowerCase()))
+                          .map((rev, idx) => {
                           const isHidden = revendedoresOcultos.includes(rev.nombre);
                           return (
                             <div 
@@ -2850,13 +3029,19 @@ const NegocioPage = () => {
                     </>
                   )}
                   
-                  {todosRevendedores.filter(n => !revendedoresConDeuda.find(r => r.nombre === n)).length > 0 && (
+                  {todosRevendedores
+                    .filter(n => !revendedoresConDeuda.find(r => r.nombre === n))
+                    .filter(n => !busquedaRevendedor || n.toLowerCase().includes(busquedaRevendedor.toLowerCase()))
+                    .length > 0 && (
                     <>
                       <h3 className="text-sm font-bold text-emerald-400 uppercase mt-6 pt-4 border-t border-gray-800 flex items-center gap-2">
                         <Check size={14} /> Sin Deuda
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {todosRevendedores.filter(n => !revendedoresConDeuda.find(r => r.nombre === n)).map((nombre, idx) => (
+                        {todosRevendedores
+                          .filter(n => !revendedoresConDeuda.find(r => r.nombre === n))
+                          .filter(n => !busquedaRevendedor || n.toLowerCase().includes(busquedaRevendedor.toLowerCase()))
+                          .map((nombre, idx) => (
                           <div 
                             key={idx} 
                             className="bg-[#0a0d14] p-4 rounded-xl border border-gray-800 hover:border-emerald-500/30 flex items-center justify-between transition-colors"
