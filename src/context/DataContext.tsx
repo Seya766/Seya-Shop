@@ -25,6 +25,8 @@ interface DataContextType {
   setMetasFinancieras: (value: MetaFinanciera[] | ((prev: MetaFinanciera[]) => MetaFinanciera[])) => void;
   presupuestoMensual: number;
   setPresupuestoMensual: (value: number | ((prev: number) => number)) => void;
+  facturasOcultas: number[];
+  setFacturasOcultas: (value: number[] | ((prev: number[]) => number[])) => void;
   descargarBackup: () => void;
   importarBackup: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
@@ -39,7 +41,8 @@ const DEFAULT_VALUES = {
   transacciones: [] as Transaccion[],
   metaAhorro: { monto: 500000, activa: true } as MetaAhorro,
   metasFinancieras: [] as MetaFinanciera[],
-  presupuestoMensual: 2000000
+  presupuestoMensual: 2000000,
+  facturasOcultas: [] as number[]
 };
 
 export const DataProvider = ({ children }: { children: ReactNode }) => {
@@ -54,6 +57,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [metaAhorro, setMetaAhorroState] = useState<MetaAhorro>(DEFAULT_VALUES.metaAhorro);
   const [metasFinancieras, setMetasFinancierasState] = useState<MetaFinanciera[]>(DEFAULT_VALUES.metasFinancieras);
   const [presupuestoMensual, setPresupuestoMensualState] = useState<number>(DEFAULT_VALUES.presupuestoMensual);
+  const [facturasOcultas, setFacturasOcultasState] = useState<number[]>(DEFAULT_VALUES.facturasOcultas);
 
   useEffect(() => {
     const init = async () => {
@@ -106,6 +110,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       { key: STORAGE_KEYS.META_AHORRO, setter: setMetaAhorroState },
       { key: STORAGE_KEYS.METAS_FINANCIERAS, setter: setMetasFinancierasState },
       { key: STORAGE_KEYS.PRESUPUESTO, setter: setPresupuestoMensualState },
+      { key: STORAGE_KEYS.FACTURAS_OCULTAS, setter: setFacturasOcultasState },
     ];
 
     await Promise.all(
@@ -202,11 +207,19 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [saveToFirestore]);
 
+  const setFacturasOcultas = useCallback((value: number[] | ((prev: number[]) => number[])) => {
+    setFacturasOcultasState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.FACTURAS_OCULTAS, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
+
   const descargarBackup = () => {
     try {
       const backupData = {
         facturas, revendedoresOcultos, pagosRevendedores, gastosFijos, transacciones,
-        metaAhorro, metasFinancieras, presupuestoMensual,
+        metaAhorro, metasFinancieras, presupuestoMensual, facturasOcultas,
         fechaBackup: getColombiaDateOnly(), userId
       };
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -250,6 +263,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
               { key: STORAGE_KEYS.META_AHORRO, value: json.metaAhorro || DEFAULT_VALUES.metaAhorro },
               { key: STORAGE_KEYS.METAS_FINANCIERAS, value: json.metasFinancieras || DEFAULT_VALUES.metasFinancieras },
               { key: STORAGE_KEYS.PRESUPUESTO, value: json.presupuestoMensual || DEFAULT_VALUES.presupuestoMensual },
+              { key: STORAGE_KEYS.FACTURAS_OCULTAS, value: json.facturasOcultas || [] },
             ];
 
             updates.forEach(({ key, value }) => {
@@ -267,6 +281,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             setMetaAhorroState(json.metaAhorro || DEFAULT_VALUES.metaAhorro);
             setMetasFinancierasState(json.metasFinancieras || DEFAULT_VALUES.metasFinancieras);
             setPresupuestoMensualState(json.presupuestoMensual || DEFAULT_VALUES.presupuestoMensual);
+            setFacturasOcultasState(json.facturasOcultas || []);
             
             alert("Backup restaurado y sincronizado con Firebase.");
           }
@@ -291,6 +306,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       metaAhorro, setMetaAhorro,
       metasFinancieras, setMetasFinancieras,
       presupuestoMensual, setPresupuestoMensual,
+      facturasOcultas, setFacturasOcultas,
       descargarBackup, importarBackup,
     }}>
       {children}
