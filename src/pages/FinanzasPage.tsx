@@ -195,9 +195,9 @@ const FinanzasPage = () => {
         return { 
           ...g, 
           pagadoEsteMes: false, 
-          mesPagado: undefined,
-          fechaPago: undefined,
-          montoPagadoEsteMes: undefined
+          mesPagado: null,
+          fechaPago: null,
+          montoPagadoEsteMes: null
         };
       }
       
@@ -834,9 +834,9 @@ const FinanzasPage = () => {
           g.id === id ? { 
             ...g, 
             pagadoEsteMes: false,
-            mesPagado: undefined,
-            fechaPago: undefined,
-            montoPagadoEsteMes: undefined
+            mesPagado: null,
+            fechaPago: null,
+            montoPagadoEsteMes: null
           } : g
         ));
       }
