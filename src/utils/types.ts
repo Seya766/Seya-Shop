@@ -103,9 +103,9 @@ export interface GastoFijo {
   diaCorte: number;
   recordatorio: boolean;
   pagadoEsteMes: boolean;
-  mesPagado?: string; // formato "YYYY-MM" para saber en qué mes se pagó
-  fechaPago?: string; // fecha exacta del pago
-  montoPagadoEsteMes?: number; // monto real pagado este mes
+  mesPagado?: string | null; // formato "YYYY-MM" para saber en qué mes se pagó
+  fechaPago?: string | null; // fecha exacta del pago
+  montoPagadoEsteMes?: number | null; // monto real pagado este mes
   historialPagos?: PagoGastoFijo[]; // historial de todos los pagos
   fechaCreacion: string;
 }
