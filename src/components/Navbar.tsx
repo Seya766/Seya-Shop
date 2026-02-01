@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Zap, Store, Wallet, Settings, Download, Upload, X } from 'lucide-react';
+import { Zap, Store, Wallet, Bot, Settings, Download, Upload, X } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
 interface NavbarProps {
@@ -16,6 +16,7 @@ const Navbar = ({ onBackup, onRestore, children }: NavbarProps) => {
 
   const isNegocio = location.pathname === '/' || location.pathname === '/negocio';
   const isFinanzas = location.pathname === '/finanzas';
+  const isAsistente = location.pathname === '/asistente';
 
   // Cerrar menú al hacer click fuera
   useEffect(() => {
@@ -85,13 +86,24 @@ const Navbar = ({ onBackup, onRestore, children }: NavbarProps) => {
             <Link
               to="/finanzas"
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                isFinanzas 
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25' 
+                isFinanzas
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               }`}
             >
               <Wallet size={16} />
               <span className="hidden sm:inline">Finanzas</span>
+            </Link>
+            <Link
+              to="/asistente"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                isAsistente
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-500/25'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              <Bot size={16} />
+              <span className="hidden sm:inline">IA</span>
             </Link>
           </div>
           

@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -13,7 +13,21 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Habilitar persistencia offline con IndexedDB
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch {
+  // Ya inicializado (ej: HMR en desarrollo)
+  db = getFirestore(app);
+}
+export { db };
+
 export const auth = getAuth(app);
 
 // ⚠️ TEMPORAL: Forzar el userId correcto con tus datos

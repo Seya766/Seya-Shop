@@ -1,14 +1,17 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, writeBatch, waitForPendingWrites } from 'firebase/firestore';
 import { db, initAuth } from '../firebase/config';
 import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
 import { getColombiaDateOnly } from '../utils/helpers';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 interface DataContextType {
   loading: boolean;
   userId: string | null;
+  isOnline: boolean;
+  syncStatus: 'synced' | 'syncing' | 'pending';
   facturas: Factura[];
   setFacturas: (value: Factura[] | ((prev: Factura[]) => Factura[])) => void;
   revendedoresOcultos: string[];
@@ -48,7 +51,26 @@ const DEFAULT_VALUES = {
 export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  
+  const isOnline = useOnlineStatus();
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'pending'>('synced');
+  const wasOfflineRef = useRef(false);
+
+  // Sincronizar cambios pendientes cuando vuelve la conexión
+  useEffect(() => {
+    if (!isOnline) {
+      wasOfflineRef.current = true;
+      setSyncStatus('pending');
+      return;
+    }
+    if (wasOfflineRef.current) {
+      setSyncStatus('syncing');
+      waitForPendingWrites(db)
+        .then(() => setSyncStatus('synced'))
+        .catch(() => setSyncStatus('synced'));
+      wasOfflineRef.current = false;
+    }
+  }, [isOnline]);
+
   const [facturas, setFacturasState] = useState<Factura[]>(DEFAULT_VALUES.facturas);
   const [revendedoresOcultos, setRevendedoresOcultosState] = useState<string[]>(DEFAULT_VALUES.revendedoresOcultos);
   const [pagosRevendedores, setPagosRevendedoresState] = useState<PagoRevendedor[]>(DEFAULT_VALUES.pagosRevendedores);
@@ -297,7 +319,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <DataContext.Provider value={{
-      loading, userId,
+      loading, userId, isOnline, syncStatus,
       facturas, setFacturas,
       revendedoresOcultos, setRevendedoresOcultos,
       pagosRevendedores, setPagosRevendedores,
