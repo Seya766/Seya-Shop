@@ -184,22 +184,58 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
     const ingresosMesPasado = transMesPasado.filter(t => t.tipo === 'ingreso').reduce((sum, t) => sum + (t.monto || 0), 0);
     const gastosMesPasado = transMesPasado.filter(t => t.tipo === 'gasto').reduce((sum, t) => sum + (t.monto || 0), 0);
 
-    // Group debtors by revendedor (matches how the app displays them)
-    const deudoresPorRevendedor: Record<string, { total: number; count: number }> = {};
+    // Group debtors by revendedor with individual invoice details
+    const deudoresPorRevendedor: Record<string, { total: number; count: number; facturas: typeof pendientesCobro }> = {};
     pendientesCobro.forEach(f => {
       const key = f.revendedor || f.cliente;
       if (!deudoresPorRevendedor[key]) {
-        deudoresPorRevendedor[key] = { total: 0, count: 0 };
+        deudoresPorRevendedor[key] = { total: 0, count: 0, facturas: [] };
       }
       deudoresPorRevendedor[key].total += ((f.cobroCliente || 0) - (f.abono || 0));
       deudoresPorRevendedor[key].count++;
+      deudoresPorRevendedor[key].facturas.push(f);
     });
 
-    const deudoresInfo = Object.entries(deudoresPorRevendedor)
+    // Detailed debtors info with individual invoices
+    const deudoresDetalle = Object.entries(deudoresPorRevendedor)
       .sort((a, b) => b[1].total - a[1].total)
-      .map(([nombre, { total, count }]) =>
-        `  - ${nombre}: ${formatearDinero(total)} (${count} facturas)`
-      ).join('\n');
+      .map(([nombre, { total, count, facturas: fs }]) => {
+        const detalleFacturas = fs
+          .sort((a, b) => new Date(a.fechaISO || '').getTime() - new Date(b.fechaISO || '').getTime())
+          .map(f => {
+            const saldo = (f.cobroCliente || 0) - (f.abono || 0);
+            const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
+            const garantiaStr = f.usoGarantia ? ` | GARANTÍA: ${f.motivoGarantia || 'sí'}${f.garantiaResuelta ? ' (resuelta)' : ' (pendiente)'}` : '';
+            const promesaStr = f.fechaPromesa ? ` | Promesa pago: ${f.fechaPromesa}` : '';
+            return `      • ${f.cliente} | ${f.empresa || 'N/A'} | Tel: ${f.telefono || 'N/A'} | Fecha: ${fechaCorta} | Cobra: ${formatearDinero(f.cobroCliente || 0)} | Abono: ${formatearDinero(f.abono || 0)} | Saldo: ${formatearDinero(saldo)}${garantiaStr}${promesaStr}`;
+          }).join('\n');
+        return `  [${nombre}] - Total: ${formatearDinero(total)} (${count} facturas)\n${detalleFacturas}`;
+      }).join('\n\n');
+
+    // Invoices with active warranties
+    const facturasConGarantia = facturasVisibles.filter(f => f.usoGarantia && !f.garantiaResuelta);
+    const garantiasInfo = facturasConGarantia.map(f => {
+      const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
+      return `  - ${f.cliente} (${f.revendedor || 'directo'}) | ${f.empresa || 'N/A'} | Fecha: ${fechaCorta} | Motivo: ${f.motivoGarantia || 'no especificado'} | Reportada: ${f.fechaGarantia || 'N/A'}`;
+    }).join('\n');
+
+    // Recent paid invoices (last 30)
+    const facturasRecientesPagadas = facturasVisibles
+      .filter(f => f.cobradoACliente)
+      .sort((a, b) => new Date(b.fechaISO || '').getTime() - new Date(a.fechaISO || '').getTime())
+      .slice(0, 30);
+    const pagadasInfo = facturasRecientesPagadas.map(f => {
+      const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
+      const ganancia = (f.cobroCliente || 0) - (f.costoInicial || 0);
+      return `  - ${fechaCorta} | ${f.cliente} (${f.revendedor || 'directo'}) | ${f.empresa || 'N/A'} | Cobrado: ${formatearDinero(f.cobroCliente || 0)} | Ganancia: ${formatearDinero(ganancia)}`;
+    }).join('\n');
+
+    // Pending provider payments with details
+    const pendientesPagoDetalle = pendientesPago.slice(0, 30).map(f => {
+      const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
+      const abonadoProv = f.abonoProveedor || 0;
+      return `  - ${fechaCorta} | ${f.cliente} (${f.revendedor || 'directo'}) | ${f.empresa || 'N/A'} | Monto factura: ${formatearDinero(f.montoFactura || 0)} | Abonado proveedor: ${formatearDinero(abonadoProv)}`;
+    }).join('\n');
 
     const gastosInfo = gastosFijos.map(g =>
       `  - ${g.nombre}: ${formatearDinero(g.monto || 0)} | Categoría: ${g.categoria} | ${g.pagadoEsteMes ? 'PAGADO' : 'PENDIENTE'} | Corte día ${g.diaCorte}`
@@ -247,8 +283,17 @@ Tu rol es ser un agente proactivo: das recomendaciones, alertas y sugerencias. A
 - Gastos: ${formatearDinero(gastosMesPasado)}
 - Balance: ${formatearDinero(ingresosMesPasado - gastosMesPasado)}
 
-═══ DEUDORES (agrupados por revendedor) ═══
-${Object.keys(deudoresPorRevendedor).length > 0 ? `${deudoresInfo}\nTotal por cobrar: ${formatearDinero(totalPorCobrar)}` : 'No hay deudores.'}
+═══ DEUDORES - DETALLE POR REVENDEDOR CON CADA FACTURA ═══
+${Object.keys(deudoresPorRevendedor).length > 0 ? `${deudoresDetalle}\n\nTotal general por cobrar: ${formatearDinero(totalPorCobrar)}` : 'No hay deudores.'}
+
+═══ GARANTÍAS PENDIENTES (${facturasConGarantia.length}) ═══
+${facturasConGarantia.length > 0 ? garantiasInfo : 'No hay garantías pendientes.'}
+
+═══ PENDIENTES DE PAGO A PROVEEDORES (${pendientesPago.length}) ═══
+${pendientesPago.length > 0 ? pendientesPagoDetalle : 'No hay pagos pendientes a proveedores.'}
+
+═══ ÚLTIMAS FACTURAS COBRADAS (${facturasRecientesPagadas.length} más recientes) ═══
+${facturasRecientesPagadas.length > 0 ? pagadasInfo : 'No hay facturas cobradas.'}
 
 ═══ GASTOS FIJOS MENSUALES (Total: ${formatearDinero(totalGastosFijos)}) ═══
 ${gastosFijos.length > 0 ? gastosInfo : 'No hay gastos fijos.'}
@@ -267,7 +312,8 @@ ${pagosRevendedores.length > 0 ? pagosInfo : 'No hay pagos registrados.'}
 - Responde siempre en español colombiano
 - Sé directo, conciso y proactivo
 - USA SOLO los datos proporcionados arriba - NO inventes cifras
-- Los montos de deudores ya están agrupados - repórtalos tal cual
+- Tienes TODOS los detalles de cada factura: fecha, cliente, teléfono, servicio, montos, garantías
+- Si te preguntan por fechas de facturas o antigüedad de deudas, usa las fechas individuales
 - Conoces tanto el apartado de Negocio como el de Finanzas
 - Da recomendaciones y alertas cuando sea relevante
 - Formatea montos en pesos colombianos
@@ -325,7 +371,7 @@ ${pagosRevendedores.length > 0 ? pagosInfo : 'No hay pagos registrados.'}
           ],
           stream: true,
           temperature: 0.7,
-          max_tokens: 2048,
+          max_tokens: 4096,
         }),
         signal: controller.signal,
       });
