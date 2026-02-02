@@ -168,9 +168,45 @@ const AI_TOOLS = [
           revendedor: { type: 'string', description: 'Nombre del revendedor. Si no se especifica, usar "Directo"' },
           empresa: { type: 'string', description: 'Nombre del servicio o producto (ej: Wom, Movistar, Samsung)' },
           montoFactura: { type: 'number', description: 'Monto de la factura del proveedor' },
-          cobroCliente: { type: 'number', description: 'Monto a cobrar al cliente. Si no se especifica, usar montoFactura' },
+          porcentaje: { type: 'number', description: 'Porcentaje de cobro al cliente (ej: 40 para 40%). Si se da, cobroCliente = montoFactura * porcentaje / 100' },
+          cobroCliente: { type: 'number', description: 'Monto directo a cobrar al cliente. Usar solo si no se da porcentaje. Si no se da ni porcentaje ni cobroCliente, usar montoFactura' },
         },
         required: ['cliente', 'empresa', 'montoFactura'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'modificar_factura',
+      description: 'Modifica una factura existente. Busca por nombre de cliente y permite cambiar campos específicos.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente para buscar la factura a modificar' },
+          nuevo_cliente: { type: 'string', description: 'Nuevo nombre del cliente (si se quiere cambiar)' },
+          nuevo_telefono: { type: 'string', description: 'Nuevo teléfono' },
+          nuevo_revendedor: { type: 'string', description: 'Nuevo revendedor' },
+          nueva_empresa: { type: 'string', description: 'Nuevo servicio/producto' },
+          nuevo_montoFactura: { type: 'number', description: 'Nuevo monto de factura' },
+          nuevo_cobroCliente: { type: 'number', description: 'Nuevo monto a cobrar al cliente' },
+          nuevo_porcentaje: { type: 'number', description: 'Nuevo porcentaje de cobro. Si se da, recalcula cobroCliente = montoFactura * porcentaje / 100' },
+        },
+        required: ['cliente'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'eliminar_factura',
+      description: 'Elimina una factura del sistema. Busca por nombre de cliente. Pide siempre confirmación antes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente de la factura a eliminar' },
+        },
+        required: ['cliente'],
       },
     },
   },
@@ -406,11 +442,13 @@ DATOS EN TIEMPO REAL:
 ${JSON.stringify(data, null, 2)}
 
 ACCIONES QUE PODÉS EJECUTAR (usa las herramientas/tools cuando el usuario lo pida):
-- crear_factura: Crear una factura nueva en el sistema
+- crear_factura: Crear una factura nueva. Soporta porcentaje de cobro (ej: al 40% = montoFactura * 0.40)
+- modificar_factura: Modificar campos de una factura existente (cliente, monto, porcentaje, servicio, etc)
+- eliminar_factura: Eliminar una factura del sistema
 - registrar_abono: Registrar un pago/abono de un cliente
 - crear_transaccion: Registrar un ingreso o gasto en Finanzas
 - marcar_pagado_proveedor: Marcar factura como pagada al proveedor
-IMPORTANTE: Usá las herramientas SOLO cuando el usuario explícitamente pida hacer una acción. Para preguntas de información, respondé normalmente sin usar herramientas.
+IMPORTANTE: Usá las herramientas SOLO cuando el usuario explícitamente pida hacer una acción. Si te piden MODIFICAR, usá modificar_factura, NO crear una nueva. Para preguntas de información, respondé normalmente sin usar herramientas.
 
 CÓMO RESPONDER:
 - Español colombiano, natural y directo. Nada de frases genéricas ni "según los datos proporcionados"
@@ -449,6 +487,8 @@ CÓMO RESPONDER:
     const name = toolCall.function.name;
 
     if (name === 'crear_factura') {
+      const pct = args.porcentaje || 0;
+      const cobro = pct > 0 ? Math.round(args.montoFactura * pct / 100) : (args.cobroCliente || args.montoFactura);
       const nuevaFactura: Factura = {
         id: Date.now(),
         cliente: args.cliente,
@@ -456,10 +496,10 @@ CÓMO RESPONDER:
         revendedor: args.revendedor || 'Directo',
         empresa: args.empresa,
         montoFactura: args.montoFactura,
-        porcentajeAplicado: 0,
+        porcentajeAplicado: pct,
         costoInicial: args.montoFactura,
         costoGarantia: 0,
-        cobroCliente: args.cobroCliente || args.montoFactura,
+        cobroCliente: cobro,
         abono: 0,
         historialAbonos: [],
         fechaPromesa: null,
@@ -475,7 +515,51 @@ CÓMO RESPONDER:
         motivoGarantia: null,
       };
       setFacturas(prev => [nuevaFactura, ...prev]);
-      return JSON.stringify({ ok: true, message: `Factura creada: ${args.cliente} - ${args.empresa} por $${args.cobroCliente || args.montoFactura}` });
+      const pctStr = pct > 0 ? ` (${pct}% de $${args.montoFactura.toLocaleString('es-CO')})` : '';
+      return JSON.stringify({ ok: true, message: `Factura creada: ${args.cliente} - ${args.empresa} | Cobro: $${cobro.toLocaleString('es-CO')}${pctStr}` });
+    }
+
+    if (name === 'modificar_factura') {
+      const searchTerm = args.cliente.toLowerCase();
+      const factura = facturas.find(f =>
+        !facturasOcultas.includes(f.id) &&
+        (f.cliente.toLowerCase().includes(searchTerm) || f.revendedor?.toLowerCase().includes(searchTerm))
+      );
+      if (!factura) return JSON.stringify({ ok: false, message: `No se encontró factura para "${args.cliente}"` });
+
+      setFacturas(prev => prev.map(f => {
+        if (f.id !== factura.id) return f;
+        const updated = { ...f };
+        if (args.nuevo_cliente) updated.cliente = args.nuevo_cliente;
+        if (args.nuevo_telefono) updated.telefono = args.nuevo_telefono;
+        if (args.nuevo_revendedor) updated.revendedor = args.nuevo_revendedor;
+        if (args.nueva_empresa) updated.empresa = args.nueva_empresa;
+        if (args.nuevo_montoFactura != null) {
+          updated.montoFactura = args.nuevo_montoFactura;
+          updated.costoInicial = args.nuevo_montoFactura;
+        }
+        if (args.nuevo_porcentaje != null) {
+          const base = updated.montoFactura;
+          updated.porcentajeAplicado = args.nuevo_porcentaje;
+          updated.cobroCliente = Math.round(base * args.nuevo_porcentaje / 100);
+        } else if (args.nuevo_cobroCliente != null) {
+          updated.cobroCliente = args.nuevo_cobroCliente;
+        }
+        return updated;
+      }));
+      return JSON.stringify({ ok: true, message: `Factura de ${factura.cliente} (${factura.empresa}) modificada correctamente` });
+    }
+
+    if (name === 'eliminar_factura') {
+      const searchTerm = args.cliente.toLowerCase();
+      const factura = facturas.find(f =>
+        !facturasOcultas.includes(f.id) &&
+        (f.cliente.toLowerCase().includes(searchTerm) || f.revendedor?.toLowerCase().includes(searchTerm))
+      );
+      if (!factura) return JSON.stringify({ ok: false, message: `No se encontró factura para "${args.cliente}"` });
+
+      setFacturas(prev => prev.filter(f => f.id !== factura.id));
+      return JSON.stringify({ ok: true, message: `Factura eliminada: ${factura.cliente} - ${factura.empresa} ($${(factura.cobroCliente || 0).toLocaleString('es-CO')})` });
     }
 
     if (name === 'registrar_abono') {
@@ -539,7 +623,21 @@ CÓMO RESPONDER:
   const describeToolCall = (toolCall: ToolCall): string => {
     const args = JSON.parse(toolCall.function.arguments);
     const name = toolCall.function.name;
-    if (name === 'crear_factura') return `Crear factura: ${args.cliente} - ${args.empresa} por $${(args.cobroCliente || args.montoFactura).toLocaleString('es-CO')}`;
+    if (name === 'crear_factura') {
+      const pct = args.porcentaje || 0;
+      const cobro = pct > 0 ? Math.round(args.montoFactura * pct / 100) : (args.cobroCliente || args.montoFactura);
+      return `Crear factura: ${args.cliente} - ${args.empresa} | Cobro: $${cobro.toLocaleString('es-CO')}${pct > 0 ? ` (${pct}%)` : ''}`;
+    }
+    if (name === 'modificar_factura') {
+      const cambios: string[] = [];
+      if (args.nuevo_porcentaje != null) cambios.push(`porcentaje: ${args.nuevo_porcentaje}%`);
+      if (args.nuevo_cobroCliente != null) cambios.push(`cobro: $${args.nuevo_cobroCliente.toLocaleString('es-CO')}`);
+      if (args.nuevo_montoFactura != null) cambios.push(`monto: $${args.nuevo_montoFactura.toLocaleString('es-CO')}`);
+      if (args.nueva_empresa) cambios.push(`servicio: ${args.nueva_empresa}`);
+      if (args.nuevo_cliente) cambios.push(`cliente: ${args.nuevo_cliente}`);
+      return `Modificar factura de ${args.cliente}${cambios.length > 0 ? ` → ${cambios.join(', ')}` : ''}`;
+    }
+    if (name === 'eliminar_factura') return `Eliminar factura de ${args.cliente}`;
     if (name === 'registrar_abono') return `Registrar ${args.tipo === 'parcial' ? 'abono parcial' : 'pago'} de ${args.cliente}${args.monto ? ` por $${args.monto.toLocaleString('es-CO')}` : ' (saldo completo)'}`;
     if (name === 'crear_transaccion') return `Registrar ${args.tipo}: ${args.descripcion} por $${args.monto.toLocaleString('es-CO')}`;
     if (name === 'marcar_pagado_proveedor') return `Marcar factura de ${args.cliente} como pagada al proveedor`;
