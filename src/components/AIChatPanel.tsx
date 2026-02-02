@@ -13,6 +13,7 @@ interface ChatMessage {
   content: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  name?: string; // function name for tool response messages
 }
 
 interface ToolCall {
@@ -649,10 +650,16 @@ CÓMO RESPONDER:
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // For API, only send role/content/tool_call_id (filter display-only fields)
+    // For API, format messages correctly for Groq's OpenAI-compatible endpoint
     const apiMessages = messagesToSend.map(m => {
-      if (m.tool_call_id) return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id };
-      if (m.tool_calls) return { role: m.role, content: m.content || '', tool_calls: m.tool_calls };
+      if (m.tool_call_id) {
+        // Tool response: must include name of the function
+        return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id, name: m.name || '' };
+      }
+      if (m.tool_calls) {
+        // Assistant message with tool calls: content must be null, not empty string
+        return { role: m.role, content: m.content || null, tool_calls: m.tool_calls };
+      }
       return { role: m.role, content: m.content };
     });
 
@@ -675,7 +682,15 @@ CÓMO RESPONDER:
       signal: controller.signal,
     });
 
-    if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      let detail = response.statusText;
+      try {
+        const parsed = JSON.parse(errorBody);
+        detail = parsed?.error?.message || parsed?.message || detail;
+      } catch { /* use statusText */ }
+      throw new Error(`Error ${response.status}: ${detail}`);
+    }
 
     const result = await response.json();
     const choice = result.choices?.[0]?.message;
@@ -693,8 +708,8 @@ CÓMO RESPONDER:
       // Execute the tool
       const result = executeTool(tool_call);
 
-      // Build tool response message
-      const toolResponse: ChatMessage = { role: 'tool', content: result, tool_call_id: tool_call.id };
+      // Build tool response message (name is required by Groq for tool role)
+      const toolResponse: ChatMessage = { role: 'tool', content: result, tool_call_id: tool_call.id, name: tool_call.function.name };
       const assistantToolMsg: ChatMessage = { role: 'assistant', content: '', tool_calls: [tool_call] };
 
       // Send tool result back to AI for a natural response
