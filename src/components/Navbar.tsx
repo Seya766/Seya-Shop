@@ -1,14 +1,16 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Zap, Store, Wallet, Settings, Download, Upload, X } from 'lucide-react';
+import { Zap, Store, Wallet, Bot, Settings, Download, Upload, X } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 
 interface NavbarProps {
   onBackup: () => void;
   onRestore: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onToggleChat?: () => void;
+  chatOpen?: boolean;
   children?: React.ReactNode;
 }
 
-const Navbar = ({ onBackup, onRestore, children }: NavbarProps) => {
+const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: NavbarProps) => {
   const location = useLocation();
   const [mostrarMenu, setMostrarMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,14 +87,25 @@ const Navbar = ({ onBackup, onRestore, children }: NavbarProps) => {
             <Link
               to="/finanzas"
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                isFinanzas 
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25' 
+                isFinanzas
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               }`}
             >
               <Wallet size={16} />
               <span className="hidden sm:inline">Finanzas</span>
             </Link>
+            <button
+              onClick={onToggleChat}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                chatOpen
+                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-500/25'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              <Bot size={16} />
+              <span className="hidden sm:inline">IA</span>
+            </button>
           </div>
           
           {/* Área derecha (stats + settings) */}
