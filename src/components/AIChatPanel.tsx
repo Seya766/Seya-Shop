@@ -158,200 +158,176 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
   // Build system prompt
   const buildSystemPrompt = useCallback((): string => {
     const now = new Date();
+    const hoy = now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Bogota' });
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
 
-    const totalFacturas = facturasVisibles.length;
     const pendientesCobro = facturasVisibles.filter(f => !f.cobradoACliente);
     const pendientesPago = facturasVisibles.filter(f => !f.pagadoAProveedor);
+    const totalPorCobrar = pendientesCobro.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.abono || 0)), 0);
     const totalGastosFijos = gastosFijos.reduce((sum, g) => sum + (g.monto || 0), 0);
+    const gastosFijosPendientes = gastosFijos.filter(g => !g.pagadoEsteMes);
 
-    // Monthly invoice data
+    // Monthly data
     const facturasEsteMes = facturasVisibles.filter(f => f.fechaISO?.startsWith(currentMonth));
     const facturasMesPasado = facturasVisibles.filter(f => f.fechaISO?.startsWith(prevMonth));
-    const gananciaEsteMes = facturasEsteMes.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.costoInicial || 0)), 0);
-    const gananciaMesPasado = facturasMesPasado.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.costoInicial || 0)), 0);
-    const ventasEsteMes = facturasEsteMes.reduce((sum, f) => sum + (f.cobroCliente || 0), 0);
-    const ventasMesPasado = facturasMesPasado.reduce((sum, f) => sum + (f.cobroCliente || 0), 0);
-    const cobradoEsteMes = facturasEsteMes.filter(f => f.cobradoACliente).reduce((sum, f) => sum + (f.cobroCliente || 0), 0);
-
-    // Monthly transaction data
     const transEsteMes = transacciones.filter(t => t.fecha?.startsWith(currentMonth));
     const transMesPasado = transacciones.filter(t => t.fecha?.startsWith(prevMonth));
-    const ingresosEsteMes = transEsteMes.filter(t => t.tipo === 'ingreso').reduce((sum, t) => sum + (t.monto || 0), 0);
-    const gastosEsteMes = transEsteMes.filter(t => t.tipo === 'gasto').reduce((sum, t) => sum + (t.monto || 0), 0);
-    const ingresosMesPasado = transMesPasado.filter(t => t.tipo === 'ingreso').reduce((sum, t) => sum + (t.monto || 0), 0);
-    const gastosMesPasado = transMesPasado.filter(t => t.tipo === 'gasto').reduce((sum, t) => sum + (t.monto || 0), 0);
 
-    // Group debtors by revendedor with individual invoice details
-    const deudoresPorRevendedor: Record<string, { total: number; count: number; facturas: typeof pendientesCobro }> = {};
-    pendientesCobro.forEach(f => {
-      const key = f.revendedor || f.cliente;
-      if (!deudoresPorRevendedor[key]) {
-        deudoresPorRevendedor[key] = { total: 0, count: 0, facturas: [] };
-      }
-      deudoresPorRevendedor[key].total += ((f.cobroCliente || 0) - (f.abono || 0));
-      deudoresPorRevendedor[key].count++;
-      deudoresPorRevendedor[key].facturas.push(f);
+    const calc = (fs: typeof facturasVisibles) => ({
+      count: fs.length,
+      ventas: fs.reduce((s, f) => s + (f.cobroCliente || 0), 0),
+      ganancia: fs.reduce((s, f) => s + ((f.cobroCliente || 0) - (f.costoInicial || 0)), 0),
+      cobrado: fs.filter(f => f.cobradoACliente).reduce((s, f) => s + (f.cobroCliente || 0), 0),
+    });
+    const calcTx = (ts: typeof transacciones) => ({
+      ingresos: ts.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + (t.monto || 0), 0),
+      gastos: ts.filter(t => t.tipo === 'gasto').reduce((s, t) => s + (t.monto || 0), 0),
     });
 
-    // Detailed debtors info with individual invoices
-    const deudoresDetalle = Object.entries(deudoresPorRevendedor)
-      .sort((a, b) => b[1].total - a[1].total)
-      .map(([nombre, { total, count, facturas: fs }]) => {
-        const detalleFacturas = fs
-          .sort((a, b) => new Date(a.fechaISO || '').getTime() - new Date(b.fechaISO || '').getTime())
-          .map(f => {
-            const saldo = (f.cobroCliente || 0) - (f.abono || 0);
-            const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
-            const garantiaStr = f.usoGarantia ? ` | GARANTÍA: ${f.motivoGarantia || 'sí'}${f.garantiaResuelta ? ' (resuelta)' : ' (pendiente)'}` : '';
-            const promesaStr = f.fechaPromesa ? ` | Promesa pago: ${f.fechaPromesa}` : '';
-            return `      • ${f.cliente} | ${f.empresa || 'N/A'} | Tel: ${f.telefono || 'N/A'} | Fecha: ${fechaCorta} | Cobra: ${formatearDinero(f.cobroCliente || 0)} | Abono: ${formatearDinero(f.abono || 0)} | Saldo: ${formatearDinero(saldo)}${garantiaStr}${promesaStr}`;
-          }).join('\n');
-        return `  [${nombre}] - Total: ${formatearDinero(total)} (${count} facturas)\n${detalleFacturas}`;
-      }).join('\n\n');
+    const mesActual = { ...calc(facturasEsteMes), ...calcTx(transEsteMes) };
+    const mesPasado = { ...calc(facturasMesPasado), ...calcTx(transMesPasado) };
 
-    // Invoices with active warranties
-    const facturasConGarantia = facturasVisibles.filter(f => f.usoGarantia && !f.garantiaResuelta);
-    const garantiasInfo = facturasConGarantia.map(f => {
-      const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
-      return `  - ${f.cliente} (${f.revendedor || 'directo'}) | ${f.empresa || 'N/A'} | Fecha: ${fechaCorta} | Motivo: ${f.motivoGarantia || 'no especificado'} | Reportada: ${f.fechaGarantia || 'N/A'}`;
-    }).join('\n');
+    // Build structured data object
+    const data = {
+      fecha_hoy: hoy,
+      resumen: {
+        facturas_totales: facturasVisibles.length,
+        pendientes_cobro: { cantidad: pendientesCobro.length, monto: totalPorCobrar },
+        pendientes_pago_proveedor: pendientesPago.length,
+        presupuesto_mensual: presupuestoMensual,
+        meta_ahorro_general: { monto: metaAhorro.monto || 0, activa: metaAhorro.activa },
+      },
+      mes_actual: {
+        periodo: currentMonth,
+        facturas: mesActual.count,
+        ventas: mesActual.ventas,
+        ganancia_bruta: mesActual.ganancia,
+        cobrado: mesActual.cobrado,
+        ingresos_registrados: mesActual.ingresos,
+        gastos_registrados: mesActual.gastos,
+        balance: mesActual.ingresos - mesActual.gastos,
+      },
+      mes_anterior: {
+        periodo: prevMonth,
+        facturas: mesPasado.count,
+        ventas: mesPasado.ventas,
+        ganancia_bruta: mesPasado.ganancia,
+        ingresos: mesPasado.ingresos,
+        gastos: mesPasado.gastos,
+        balance: mesPasado.ingresos - mesPasado.gastos,
+      },
+      deudores: Object.entries(
+        pendientesCobro.reduce((acc, f) => {
+          const key = f.revendedor || f.cliente;
+          if (!acc[key]) acc[key] = [];
+          acc[key].push({
+            cliente: f.cliente,
+            telefono: f.telefono || null,
+            servicio: f.empresa || null,
+            fecha: f.fechaDisplay || f.fechaISO?.slice(0, 10) || null,
+            fechaISO: f.fechaISO || null,
+            cobro: f.cobroCliente || 0,
+            abono: f.abono || 0,
+            saldo: (f.cobroCliente || 0) - (f.abono || 0),
+            garantia: f.usoGarantia ? { motivo: f.motivoGarantia, resuelta: f.garantiaResuelta } : null,
+            promesa_pago: f.fechaPromesa || null,
+          });
+          return acc;
+        }, {} as Record<string, unknown[]>)
+      ).map(([nombre, facturas]) => ({
+        revendedor: nombre,
+        total: (facturas as Array<{saldo: number}>).reduce((s, f) => s + f.saldo, 0),
+        facturas,
+      })).sort((a, b) => b.total - a.total),
+      garantias_pendientes: facturasVisibles.filter(f => f.usoGarantia && !f.garantiaResuelta).map(f => ({
+        cliente: f.cliente, revendedor: f.revendedor, servicio: f.empresa,
+        fecha: f.fechaDisplay || f.fechaISO?.slice(0, 10),
+        motivo: f.motivoGarantia, reportada: f.fechaGarantia,
+      })),
+      facturas_cobradas_recientes: facturasVisibles
+        .filter(f => f.cobradoACliente)
+        .sort((a, b) => new Date(b.fechaISO || '').getTime() - new Date(a.fechaISO || '').getTime())
+        .slice(0, 30)
+        .map(f => ({
+          fecha: f.fechaDisplay || f.fechaISO?.slice(0, 10),
+          cliente: f.cliente, revendedor: f.revendedor, servicio: f.empresa,
+          cobrado: f.cobroCliente || 0,
+          costo: f.costoInicial || 0,
+          ganancia: (f.cobroCliente || 0) - (f.costoInicial || 0),
+        })),
+      pendientes_pago_proveedor: pendientesPago.slice(0, 30).map(f => ({
+        fecha: f.fechaDisplay || f.fechaISO?.slice(0, 10),
+        cliente: f.cliente, revendedor: f.revendedor, servicio: f.empresa,
+        monto_factura: f.montoFactura || 0, abonado_proveedor: f.abonoProveedor || 0,
+      })),
+      gastos_fijos: {
+        total_mensual: totalGastosFijos,
+        pendientes_este_mes: gastosFijosPendientes.length,
+        monto_pendiente: gastosFijosPendientes.reduce((s, g) => s + (g.monto || 0), 0),
+        detalle: gastosFijos.map(g => ({
+          nombre: g.nombre, monto: g.monto, categoria: g.categoria,
+          dia_corte: g.diaCorte, pagado: g.pagadoEsteMes,
+          monto_pagado: g.montoPagadoEsteMes || null,
+        })),
+      },
+      transacciones_recientes: transacciones.slice(-30).map(t => ({
+        fecha: t.fecha, tipo: t.tipo, monto: t.monto,
+        categoria: t.categoria, descripcion: t.descripcion,
+      })),
+      metas_financieras: metasFinancieras.filter(m => m.activa).map(m => {
+        const totalBolsillos = m.bolsillos?.reduce((s, b) => s + (b.saldo || 0), 0) || 0;
+        const montoReal = totalBolsillos || m.montoActual || 0;
+        return {
+          nombre: m.nombre,
+          icono: m.icono,
+          objetivo: m.montoObjetivo,
+          ahorrado: montoReal,
+          progreso_pct: Math.round((montoReal / (m.montoObjetivo || 1)) * 100),
+          faltante: (m.montoObjetivo || 0) - montoReal,
+          aporte_mensual_planeado: m.aporteMensualPlaneado,
+          prioridad: m.prioridad,
+          fecha_inicio: m.fechaInicio,
+          fecha_objetivo: m.fechaObjetivo || null,
+          bolsillos: m.bolsillos?.map(b => ({
+            nombre: b.nombre,
+            tipo: b.tipo,
+            saldo: b.saldo || 0,
+            rendimiento_anual_pct: b.tasaRendimientoAnual,
+            ultimos_aportes: b.historialAportes?.slice(-5).map(a => ({
+              fecha: a.fecha, monto: a.monto, tipo: a.tipo,
+            })),
+          })) || [],
+        };
+      }),
+      pagos_revendedores: pagosRevendedores.slice(-15).map(p => ({
+        fecha: p.fecha, revendedor: p.revendedor,
+        monto: p.montoTotal, nota: p.nota || null,
+      })),
+    };
 
-    // Recent paid invoices (last 30)
-    const facturasRecientesPagadas = facturasVisibles
-      .filter(f => f.cobradoACliente)
-      .sort((a, b) => new Date(b.fechaISO || '').getTime() - new Date(a.fechaISO || '').getTime())
-      .slice(0, 30);
-    const pagadasInfo = facturasRecientesPagadas.map(f => {
-      const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
-      const ganancia = (f.cobroCliente || 0) - (f.costoInicial || 0);
-      return `  - ${fechaCorta} | ${f.cliente} (${f.revendedor || 'directo'}) | ${f.empresa || 'N/A'} | Cobrado: ${formatearDinero(f.cobroCliente || 0)} | Ganancia: ${formatearDinero(ganancia)}`;
-    }).join('\n');
+    return `Eres Seya AI. Hoy es ${hoy}.
 
-    // Pending provider payments with details
-    const pendientesPagoDetalle = pendientesPago.slice(0, 30).map(f => {
-      const fechaCorta = f.fechaDisplay || f.fechaISO?.slice(0, 10) || 'sin fecha';
-      const abonadoProv = f.abonoProveedor || 0;
-      return `  - ${fechaCorta} | ${f.cliente} (${f.revendedor || 'directo'}) | ${f.empresa || 'N/A'} | Monto factura: ${formatearDinero(f.montoFactura || 0)} | Abonado proveedor: ${formatearDinero(abonadoProv)}`;
-    }).join('\n');
+QUIÉN ERES: Sos el asistente inteligente integrado en Seya Shop, la app de gestión de negocio del usuario. No sos un chatbot externo — sos parte de la app. Tenés acceso directo a todos los datos en tiempo real. Hablá como un socio de confianza que conoce el negocio por dentro.
 
-    const gastosInfo = gastosFijos.map(g =>
-      `  - ${g.nombre}: ${formatearDinero(g.monto || 0)} | Categoría: ${g.categoria} | ${g.pagadoEsteMes ? 'PAGADO' : 'PENDIENTE'} | Corte día ${g.diaCorte}`
-    ).join('\n');
+EL NEGOCIO: El usuario vende servicios de telecomunicaciones en Colombia a través de revendedores. Usa esta app para:
+- NEGOCIO: crear facturas, pagar proveedores, cobrar clientes, registrar abonos parciales, manejar garantías (30 días), gestionar revendedores, ver estadísticas y ranking de servicios
+- FINANZAS: gastos fijos con día de corte, ingresos/gastos, metas de ahorro con bolsillos (Nu Bank 11.5% EA, efectivo, bancos), análisis de gastos, insights financieros, presupuesto mensual
 
-    const transaccionesInfo = transacciones.slice(-20).map(t =>
-      `  - ${t.fecha}: ${t.tipo === 'ingreso' ? '+' : '-'}${formatearDinero(t.monto || 0)} | ${t.categoria} | ${t.descripcion}`
-    ).join('\n');
+DATOS EN TIEMPO REAL:
+${JSON.stringify(data, null, 2)}
 
-    const metasInfo = metasFinancieras.filter(m => m.activa).map(m =>
-      `  - ${m.nombre}: ${formatearDinero(m.montoActual || 0)} de ${formatearDinero(m.montoObjetivo || 0)} (${Math.round(((m.montoActual || 0) / (m.montoObjetivo || 1)) * 100)}%) | Prioridad: ${m.prioridad}`
-    ).join('\n');
-
-    const pagosInfo = pagosRevendedores.slice(-10).map(p =>
-      `  - ${p.fecha}: ${p.revendedor} - ${formatearDinero(p.montoTotal || 0)}${p.nota ? ` (${p.nota})` : ''}`
-    ).join('\n');
-
-    const totalPorCobrar = pendientesCobro.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.abono || 0)), 0);
-
-    return `Eres **Seya AI**, el agente inteligente de Seya Shop.
-
-═══ SOBRE SEYA SHOP (LA APP) ═══
-Seya Shop es una aplicación web de gestión de negocio y finanzas personales. El dueño vende servicios de telecomunicaciones en Colombia a través de revendedores/distribuidores. La app tiene dos secciones principales:
-
-**SECCIÓN NEGOCIO:**
-- Gestión de facturas con ciclo completo: crear factura → pagar al proveedor → cobrar al cliente
-- Cada factura tiene: cliente, teléfono, revendedor, servicio/empresa, monto factura, porcentaje aplicado, costo inicial, cobro al cliente
-- Sistema de abonos parciales del cliente con historial y fechas promesa de pago
-- Sistema de abonos parciales al proveedor con historial
-- Garantías con seguimiento de 30 días (motivo, fecha, resolución)
-- Filtros por estado: Por Pagar, Por Cobrar, Finalizados, Garantías, Ocultas
-- Búsqueda por cliente, revendedor o servicio
-- Centro de estadísticas con KPIs mensuales: ganancia, facturas, promedio, diario
-- Ranking de servicios más rentables
-- Gestión de revendedores: ver estado de cuenta, deudas, pagos distribuidos entre facturas
-- Desglose de ganancias por día
-
-**SECCIÓN FINANZAS:**
-- Resumen: alertas inteligentes, próximos pagos, distribución de gastos por categoría, métricas financieras
-- Gastos Fijos: servicios mensuales con día de corte, estado pagado/pendiente, historial de pagos
-- Movimientos: registro de ingresos y gastos con categorías (servicios, arriendo, agua, luz, internet, teléfono, tv, transporte, alimentación, mercado, salud, educación, entretenimiento, otros)
-- Insights: plan financiero, dinero disponible real, gasto diario seguro, progreso de meta de ahorro
-- Análisis: top gastos, gastos recurrentes, distribución por categoría
-- Metas: objetivos de ahorro con "bolsillos" (Nu Bank con rendimiento 11.5%, Efectivo, Otro Banco, Otro) cada uno con historial de aportes/retiros/rendimientos
-
-**FUNCIONES ADICIONALES:**
-- Backup/restauración de datos en JSON
-- Soporte offline con sincronización automática
-- Tema oscuro
-- Horarios en zona Colombia (America/Bogota)
-
-═══ TU ROL ═══
-Eres el agente inteligente personal del dueño de este negocio. Conoces TODO: la app, los datos, el negocio, las finanzas. Eres asesor financiero, consultor de negocio y asistente personal. Das recomendaciones proactivas, alertas y sugerencias. Puedes opinar sobre la app, el negocio, estrategias de cobro, análisis financiero, y cualquier tema relacionado.
-
-═══ RESUMEN GENERAL ═══
-- Facturas totales: ${totalFacturas}
-- Pendientes de cobro: ${pendientesCobro.length} facturas (${formatearDinero(totalPorCobrar)})
-- Pendientes de pago a proveedores: ${pendientesPago.length}
-- Presupuesto mensual: ${formatearDinero(presupuestoMensual)}
-- Meta de ahorro: ${formatearDinero(metaAhorro.monto || 0)} (${metaAhorro.activa ? 'activa' : 'inactiva'})
-
-═══ MES ACTUAL (${currentMonth}) ═══
-- Facturas creadas: ${facturasEsteMes.length}
-- Ventas totales: ${formatearDinero(ventasEsteMes)}
-- Ganancia bruta (ventas - costo): ${formatearDinero(gananciaEsteMes)}
-- Ya cobrado: ${formatearDinero(cobradoEsteMes)}
-- Ingresos registrados: ${formatearDinero(ingresosEsteMes)}
-- Gastos registrados: ${formatearDinero(gastosEsteMes)}
-- Balance transacciones: ${formatearDinero(ingresosEsteMes - gastosEsteMes)}
-
-═══ MES ANTERIOR (${prevMonth}) ═══
-- Facturas creadas: ${facturasMesPasado.length}
-- Ventas totales: ${formatearDinero(ventasMesPasado)}
-- Ganancia bruta: ${formatearDinero(gananciaMesPasado)}
-- Ingresos: ${formatearDinero(ingresosMesPasado)}
-- Gastos: ${formatearDinero(gastosMesPasado)}
-- Balance: ${formatearDinero(ingresosMesPasado - gastosMesPasado)}
-
-═══ DEUDORES - DETALLE POR REVENDEDOR CON CADA FACTURA ═══
-${Object.keys(deudoresPorRevendedor).length > 0 ? `${deudoresDetalle}\n\nTotal general por cobrar: ${formatearDinero(totalPorCobrar)}` : 'No hay deudores.'}
-
-═══ GARANTÍAS PENDIENTES (${facturasConGarantia.length}) ═══
-${facturasConGarantia.length > 0 ? garantiasInfo : 'No hay garantías pendientes.'}
-
-═══ PENDIENTES DE PAGO A PROVEEDORES (${pendientesPago.length}) ═══
-${pendientesPago.length > 0 ? pendientesPagoDetalle : 'No hay pagos pendientes a proveedores.'}
-
-═══ ÚLTIMAS FACTURAS COBRADAS (${facturasRecientesPagadas.length} más recientes) ═══
-${facturasRecientesPagadas.length > 0 ? pagadasInfo : 'No hay facturas cobradas.'}
-
-═══ GASTOS FIJOS MENSUALES (Total: ${formatearDinero(totalGastosFijos)}) ═══
-${gastosFijos.length > 0 ? gastosInfo : 'No hay gastos fijos.'}
-
-═══ ÚLTIMAS TRANSACCIONES ═══
-${transacciones.length > 0 ? transaccionesInfo : 'No hay transacciones.'}
-
-═══ METAS FINANCIERAS ═══
-${metasFinancieras.filter(m => m.activa).length > 0 ? metasInfo : 'No hay metas activas.'}
-
-═══ ÚLTIMOS PAGOS A REVENDEDORES ═══
-${pagosRevendedores.length > 0 ? pagosInfo : 'No hay pagos registrados.'}
-
-═══ INSTRUCCIONES ═══
-- Te llamas Seya AI. Preséntate así si te preguntan.
-- Responde siempre en español colombiano
-- Sé directo, conciso y proactivo
-- USA SOLO los datos proporcionados arriba - NO inventes cifras
-- Tienes TODOS los detalles de cada factura: fecha, cliente, teléfono, servicio, montos, garantías
-- Si te preguntan por fechas de facturas o antigüedad de deudas, usa las fechas individuales de cada factura
-- Conoces TODA la app: sección Negocio, sección Finanzas, y todas sus funcionalidades
-- Si te preguntan sobre la app o la página, puedes opinar, sugerir mejoras y explicar funcionalidades
-- Da recomendaciones y alertas proactivas cuando sea relevante
-- Puedes analizar tendencias, comparar meses, detectar patrones de pago
-- Si te preguntan algo que puedes responder con los datos que tienes, responde con datos concretos
-- Formatea montos en pesos colombianos
-- Usa markdown: **negrita**, listas con -, encabezados con ##`;
+CÓMO RESPONDER:
+- Español colombiano, natural y directo. Nada de frases genéricas ni "según los datos proporcionados"
+- Respondé como si estuvieras viendo la app junto con el usuario — porque literalmente tenés los mismos datos
+- Usá los números exactos del JSON. Nunca inventes cifras
+- Cuando te pregunten por fechas, montos o detalles de facturas, buscá en el JSON y respondé con precisión
+- Si te preguntan sobre la app, podés opinar, explicar funcionalidades y sugerir mejoras — la conocés toda
+- Sé proactivo: si ves algo importante (deuda vieja, gasto alto, meta atrasada), mencionalo
+- Formateá montos como pesos colombianos ($X.XXX.XXX)
+- Usá markdown para formatear: **negrita**, listas con -, encabezados con ##
+- Respuestas concisas pero completas. No repitas los datos en tablas enormes a menos que te lo pidan`;
   }, [facturasVisibles, gastosFijos, transacciones, presupuestoMensual, metasFinancieras, metaAhorro, pagosRevendedores, montoPorCobrar]);
 
   // Auto-scroll
