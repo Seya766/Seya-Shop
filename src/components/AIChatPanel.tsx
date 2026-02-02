@@ -1,15 +1,31 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Trash2, ArrowDown, Bot, User, AlertCircle, FileText, DollarSign, X } from 'lucide-react';
+import { Send, Trash2, ArrowDown, Bot, User, AlertCircle, FileText, DollarSign, X, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../context/DataContext';
-import { formatearDineroCorto } from '../utils/helpers';
+import { formatearDineroCorto, getColombiaISO, getColombiaDateOnly, obtenerHoraColombiana } from '../utils/helpers';
+import type { Factura, Transaccion, CategoriaGasto } from '../utils/types';
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
+
+interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+// Action confirmation state
+interface PendingAction {
+  tool_call: ToolCall;
+  description: string;
+  messages: ChatMessage[];
 }
 
 interface AIChatPanelProps {
@@ -137,12 +153,83 @@ const renderMarkdown = (text: string): React.ReactNode => {
   return <>{blocks}</>;
 };
 
+// Tool definitions for Groq function calling
+const AI_TOOLS = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'crear_factura',
+      description: 'Crea una nueva factura/venta en el sistema. Usa esto cuando el usuario pida crear, agregar o registrar una factura nueva.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre o número del cliente' },
+          telefono: { type: 'string', description: 'Teléfono del cliente (opcional)' },
+          revendedor: { type: 'string', description: 'Nombre del revendedor. Si no se especifica, usar "Directo"' },
+          empresa: { type: 'string', description: 'Nombre del servicio o producto (ej: Wom, Movistar, Samsung)' },
+          montoFactura: { type: 'number', description: 'Monto de la factura del proveedor' },
+          cobroCliente: { type: 'number', description: 'Monto a cobrar al cliente. Si no se especifica, usar montoFactura' },
+        },
+        required: ['cliente', 'empresa', 'montoFactura'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'registrar_abono',
+      description: 'Registra un pago/abono de un cliente a una factura existente pendiente de cobro. Busca la factura por nombre de cliente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente que paga' },
+          monto: { type: 'number', description: 'Monto del abono. Si no se especifica, se paga el saldo completo' },
+          tipo: { type: 'string', enum: ['total', 'parcial'], description: 'Si es pago total o parcial. Default: total' },
+        },
+        required: ['cliente'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'crear_transaccion',
+      description: 'Registra un ingreso o gasto en la sección de Finanzas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          descripcion: { type: 'string', description: 'Descripción de la transacción' },
+          monto: { type: 'number', description: 'Monto de la transacción' },
+          tipo: { type: 'string', enum: ['ingreso', 'gasto'], description: 'Tipo: ingreso o gasto' },
+          categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
+        },
+        required: ['descripcion', 'monto', 'tipo'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'marcar_pagado_proveedor',
+      description: 'Marca una factura como pagada al proveedor. Busca por nombre de cliente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cliente: { type: 'string', description: 'Nombre del cliente de la factura a marcar como pagada' },
+        },
+        required: ['cliente'],
+      },
+    },
+  },
+];
+
 const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
-  const { facturas, gastosFijos, transacciones, presupuestoMensual, facturasOcultas, metasFinancieras, metaAhorro, pagosRevendedores } = useData();
+  const { facturas, setFacturas, gastosFijos, transacciones, setTransacciones, presupuestoMensual, facturasOcultas, metasFinancieras, metaAhorro, pagosRevendedores } = useData();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
@@ -318,6 +405,13 @@ EL NEGOCIO: El usuario vende servicios de telecomunicaciones en Colombia a trav�
 DATOS EN TIEMPO REAL:
 ${JSON.stringify(data, null, 2)}
 
+ACCIONES QUE PODÉS EJECUTAR (usa las herramientas/tools cuando el usuario lo pida):
+- crear_factura: Crear una factura nueva en el sistema
+- registrar_abono: Registrar un pago/abono de un cliente
+- crear_transaccion: Registrar un ingreso o gasto en Finanzas
+- marcar_pagado_proveedor: Marcar factura como pagada al proveedor
+IMPORTANTE: Usá las herramientas SOLO cuando el usuario explícitamente pida hacer una acción. Para preguntas de información, respondé normalmente sin usar herramientas.
+
 CÓMO RESPONDER:
 - Español colombiano, natural y directo. Nada de frases genéricas ni "según los datos proporcionados"
 - Respondé como si estuvieras viendo la app junto con el usuario — porque literalmente tenés los mismos datos
@@ -327,7 +421,8 @@ CÓMO RESPONDER:
 - Sé proactivo: si ves algo importante (deuda vieja, gasto alto, meta atrasada), mencionalo
 - Formateá montos como pesos colombianos ($X.XXX.XXX)
 - Usá markdown para formatear: **negrita**, listas con -, encabezados con ##
-- Respuestas concisas pero completas. No repitas los datos en tablas enormes a menos que te lo pidan`;
+- Respuestas concisas pero completas. No repitas los datos en tablas enormes a menos que te lo pidan
+- NUNCA digas que podés hacer algo que no está en tus herramientas. Si no podés, decilo honestamente`;
   }, [facturasVisibles, gastosFijos, transacciones, presupuestoMensual, metasFinancieras, metaAhorro, pagosRevendedores, montoPorCobrar]);
 
   // Auto-scroll
@@ -348,12 +443,203 @@ CÓMO RESPONDER:
     setShowScrollDown(!isAtBottom);
   };
 
+  // Execute a tool call - returns result string
+  const executeTool = useCallback((toolCall: ToolCall): string => {
+    const args = JSON.parse(toolCall.function.arguments);
+    const name = toolCall.function.name;
+
+    if (name === 'crear_factura') {
+      const nuevaFactura: Factura = {
+        id: Date.now(),
+        cliente: args.cliente,
+        telefono: args.telefono || '',
+        revendedor: args.revendedor || 'Directo',
+        empresa: args.empresa,
+        montoFactura: args.montoFactura,
+        porcentajeAplicado: 0,
+        costoInicial: args.montoFactura,
+        costoGarantia: 0,
+        cobroCliente: args.cobroCliente || args.montoFactura,
+        abono: 0,
+        historialAbonos: [],
+        fechaPromesa: null,
+        pagadoAProveedor: false,
+        cobradoACliente: false,
+        usoGarantia: false,
+        fechaISO: getColombiaISO(),
+        fechaDisplay: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' }),
+        fechaPagoReal: null,
+        fechaGarantia: null,
+        garantiaResuelta: false,
+        fechaResolucionGarantia: null,
+        motivoGarantia: null,
+      };
+      setFacturas(prev => [nuevaFactura, ...prev]);
+      return JSON.stringify({ ok: true, message: `Factura creada: ${args.cliente} - ${args.empresa} por $${args.cobroCliente || args.montoFactura}` });
+    }
+
+    if (name === 'registrar_abono') {
+      const searchTerm = args.cliente.toLowerCase();
+      const factura = facturas.find(f =>
+        !f.cobradoACliente && !facturasOcultas.includes(f.id) &&
+        (f.cliente.toLowerCase().includes(searchTerm) || f.revendedor?.toLowerCase().includes(searchTerm))
+      );
+      if (!factura) return JSON.stringify({ ok: false, message: `No se encontró factura pendiente para "${args.cliente}"` });
+
+      const saldo = (factura.cobroCliente || 0) - (factura.abono || 0);
+      const esPagoTotal = !args.tipo || args.tipo === 'total' || (args.monto && args.monto >= saldo);
+      const montoAbono = esPagoTotal ? saldo : (args.monto || saldo);
+
+      setFacturas(prev => prev.map(f => {
+        if (f.id !== factura.id) return f;
+        const historial = [...(f.historialAbonos || []), {
+          monto: montoAbono,
+          fecha: getColombiaDateOnly(),
+          tipo: esPagoTotal ? 'pago_completo' as const : 'abono_parcial' as const,
+        }];
+        const totalAbonado = (f.abono || 0) + montoAbono;
+        const completado = totalAbonado >= (f.cobroCliente || 0);
+        return { ...f, abono: totalAbonado, cobradoACliente: completado, historialAbonos: historial, fechaPromesa: completado ? null : f.fechaPromesa };
+      }));
+      return JSON.stringify({ ok: true, message: `Abono registrado: $${montoAbono} para ${factura.cliente} (${factura.empresa}). ${esPagoTotal ? 'Factura pagada completamente.' : `Saldo restante: $${saldo - montoAbono}`}` });
+    }
+
+    if (name === 'crear_transaccion') {
+      const nueva: Transaccion = {
+        id: Date.now(),
+        descripcion: args.descripcion,
+        monto: args.monto,
+        categoria: (args.categoria || 'otros') as CategoriaGasto,
+        tipo: args.tipo,
+        fecha: getColombiaDateOnly(),
+        fechaCreacion: getColombiaISO(),
+      };
+      setTransacciones(prev => [nueva, ...prev]);
+      return JSON.stringify({ ok: true, message: `${args.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado: ${args.descripcion} por $${args.monto}` });
+    }
+
+    if (name === 'marcar_pagado_proveedor') {
+      const searchTerm = args.cliente.toLowerCase();
+      const factura = facturas.find(f =>
+        !f.pagadoAProveedor && !facturasOcultas.includes(f.id) &&
+        (f.cliente.toLowerCase().includes(searchTerm) || f.revendedor?.toLowerCase().includes(searchTerm))
+      );
+      if (!factura) return JSON.stringify({ ok: false, message: `No se encontró factura pendiente de pago a proveedor para "${args.cliente}"` });
+
+      setFacturas(prev => prev.map(f =>
+        f.id === factura.id ? { ...f, pagadoAProveedor: true, fechaPagoReal: obtenerHoraColombiana() } : f
+      ));
+      return JSON.stringify({ ok: true, message: `Factura de ${factura.cliente} (${factura.empresa}) marcada como pagada al proveedor` });
+    }
+
+    return JSON.stringify({ ok: false, message: 'Acción no reconocida' });
+  }, [facturas, facturasOcultas, setFacturas, setTransacciones]);
+
+  // Describe a tool call in human-readable Spanish
+  const describeToolCall = (toolCall: ToolCall): string => {
+    const args = JSON.parse(toolCall.function.arguments);
+    const name = toolCall.function.name;
+    if (name === 'crear_factura') return `Crear factura: ${args.cliente} - ${args.empresa} por $${(args.cobroCliente || args.montoFactura).toLocaleString('es-CO')}`;
+    if (name === 'registrar_abono') return `Registrar ${args.tipo === 'parcial' ? 'abono parcial' : 'pago'} de ${args.cliente}${args.monto ? ` por $${args.monto.toLocaleString('es-CO')}` : ' (saldo completo)'}`;
+    if (name === 'crear_transaccion') return `Registrar ${args.tipo}: ${args.descripcion} por $${args.monto.toLocaleString('es-CO')}`;
+    if (name === 'marcar_pagado_proveedor') return `Marcar factura de ${args.cliente} como pagada al proveedor`;
+    return 'Acción desconocida';
+  };
+
+  // Call AI API (non-streaming for tool calls, streaming for text)
+  const callAI = useCallback(async (messagesToSend: ChatMessage[]): Promise<{ content: string; tool_calls?: ToolCall[] }> => {
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // For API, only send role/content/tool_call_id (filter display-only fields)
+    const apiMessages = messagesToSend.map(m => {
+      if (m.tool_call_id) return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id };
+      if (m.tool_calls) return { role: m.role, content: m.content || '', tool_calls: m.tool_calls };
+      return { role: m.role, content: m.content };
+    });
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: buildSystemPrompt() },
+          ...apiMessages,
+        ],
+        tools: AI_TOOLS,
+        temperature: 0.7,
+        max_tokens: 4096,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+
+    const result = await response.json();
+    const choice = result.choices?.[0]?.message;
+    return { content: choice?.content || '', tool_calls: choice?.tool_calls };
+  }, [buildSystemPrompt]);
+
+  // Handle confirmed action execution
+  const confirmAction = useCallback(async () => {
+    if (!pendingAction) return;
+    const { tool_call, messages: contextMessages } = pendingAction;
+    setPendingAction(null);
+    setIsLoading(true);
+
+    try {
+      // Execute the tool
+      const result = executeTool(tool_call);
+
+      // Build tool response message
+      const toolResponse: ChatMessage = { role: 'tool', content: result, tool_call_id: tool_call.id };
+      const assistantToolMsg: ChatMessage = { role: 'assistant', content: '', tool_calls: [tool_call] };
+
+      // Send tool result back to AI for a natural response
+      const fullConversation = [...contextMessages, assistantToolMsg, toolResponse];
+      const aiResponse = await callAI(fullConversation);
+
+      // Show the AI's response about the action
+      const finalContent = aiResponse.content || JSON.parse(result).message;
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: 'assistant', content: `✅ ${finalContent}` };
+        return updated;
+      });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Error ejecutando acción';
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: 'assistant', content: `❌ Error: ${errorMsg}` };
+        return updated;
+      });
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  }, [pendingAction, executeTool, callAI]);
+
+  const cancelAction = useCallback(() => {
+    if (!pendingAction) return;
+    setPendingAction(null);
+    setMessages(prev => {
+      const updated = [...prev];
+      updated[updated.length - 1] = { role: 'assistant', content: 'Acción cancelada.' };
+      return updated;
+    });
+  }, [pendingAction]);
+
   // Send message
   const sendMessage = async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
 
     setError(null);
+    setPendingAction(null);
     const userMessage: ChatMessage = { role: 'user', content: trimmed };
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
@@ -364,75 +650,28 @@ CÓMO RESPONDER:
     setMessages([...newMessages, assistantMessage]);
 
     try {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
+      const aiResponse = await callAI(newMessages);
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: GROQ_MODEL,
-          messages: [
-            { role: 'system', content: buildSystemPrompt() },
-            ...newMessages.map(m => ({ role: m.role, content: m.content })),
-          ],
-          stream: true,
-          temperature: 0.7,
-          max_tokens: 4096,
-        }),
-        signal: controller.signal,
-      });
+      if (aiResponse.tool_calls && aiResponse.tool_calls.length > 0) {
+        // AI wants to perform an action - ask for confirmation
+        const toolCall = aiResponse.tool_calls[0];
+        const description = describeToolCall(toolCall);
+        setPendingAction({ tool_call: toolCall, description, messages: newMessages });
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      }
+        const confirmText = aiResponse.content
+          ? `${aiResponse.content}\n\n**¿Confirmar acción?**`
+          : `Quiero ejecutar: **${description}**\n\n**¿Confirmar?**`;
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No se pudo leer la respuesta');
-
-      const decoder = new TextDecoder();
-      let accumulated = '';
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
-
-          const data = trimmedLine.slice(6);
-          if (data === '[DONE]') break;
-
-          try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content || '';
-            if (content) {
-              accumulated += content;
-              setMessages(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: accumulated };
-                return updated;
-              });
-            }
-          } catch {
-            // Skip malformed chunks
-          }
-        }
-      }
-
-      if (!accumulated) {
         setMessages(prev => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', content: 'No se recibió respuesta. Intenta de nuevo.' };
+          updated[updated.length - 1] = { role: 'assistant', content: confirmText };
+          return updated;
+        });
+      } else {
+        // Regular text response
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'assistant', content: aiResponse.content || 'No se recibió respuesta. Intenta de nuevo.' };
           return updated;
         });
       }
@@ -454,6 +693,7 @@ CÓMO RESPONDER:
     setMessages([]);
     setError(null);
     setIsLoading(false);
+    setPendingAction(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -642,6 +882,37 @@ CÓMO RESPONDER:
                 >
                   <AlertCircle size={14} className="flex-shrink-0" />
                   <span>{error}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Action confirmation buttons */}
+            <AnimatePresence>
+              {pendingAction && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mx-3 mb-2 p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-xl overflow-hidden"
+                >
+                  <p className="text-xs text-cyan-300 mb-2 font-medium">{pendingAction.description}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={confirmAction}
+                      disabled={isLoading}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      <CheckCircle size={14} />
+                      Confirmar
+                    </button>
+                    <button
+                      onClick={cancelAction}
+                      disabled={isLoading}
+                      className="flex-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-gray-300 text-xs font-medium rounded-lg transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
