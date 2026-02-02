@@ -846,7 +846,7 @@ CÓMO RESPONDER:
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 bottom-0 w-full sm:w-[420px] bg-[#0f111a] border-l border-gray-800/50 z-[90] flex flex-col shadow-2xl shadow-black/50"
+            className="fixed top-16 right-0 bottom-0 w-full sm:w-[420px] bg-[#0f111a] border-l border-gray-800/50 z-[90] flex flex-col shadow-2xl shadow-black/50"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800/50 bg-[#161b2c]/80">
