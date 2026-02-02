@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Trash2, ArrowDown, Bot, User, AlertCircle, FileText, DollarSign, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../context/DataContext';
-import { formatearDinero, formatearDineroCorto } from '../utils/helpers';
+import { formatearDineroCorto } from '../utils/helpers';
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
