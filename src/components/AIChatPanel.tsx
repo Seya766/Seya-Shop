@@ -159,9 +159,22 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
     const pendientesPago = facturas.filter(f => !f.pagadoAProveedor);
     const totalGastosFijos = gastosFijos.reduce((sum, g) => sum + g.monto, 0);
 
-    const deudoresInfo = pendientesCobro.slice(0, 20).map(f =>
-      `  - ${f.cliente} (${f.revendedor}): debe ${formatearDinero(f.cobroCliente - f.abono)} de ${formatearDinero(f.cobroCliente)}`
-    ).join('\n');
+    // Group debtors by revendedor (matches how the app displays them)
+    const deudoresPorRevendedor: Record<string, { total: number; count: number }> = {};
+    pendientesCobro.forEach(f => {
+      const key = f.revendedor || f.cliente;
+      if (!deudoresPorRevendedor[key]) {
+        deudoresPorRevendedor[key] = { total: 0, count: 0 };
+      }
+      deudoresPorRevendedor[key].total += (f.cobroCliente - f.abono);
+      deudoresPorRevendedor[key].count++;
+    });
+
+    const deudoresInfo = Object.entries(deudoresPorRevendedor)
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([nombre, { total, count }]) =>
+        `  - ${nombre}: ${formatearDinero(total)} (${count} facturas)`
+      ).join('\n');
 
     const gastosInfo = gastosFijos.map(g =>
       `  - ${g.nombre}: ${formatearDinero(g.monto)} (${g.pagadoEsteMes ? 'pagado' : 'pendiente'})`
@@ -171,26 +184,30 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
       `  - ${t.fecha}: ${t.tipo === 'ingreso' ? '+' : '-'}${formatearDinero(t.monto)} - ${t.descripcion}`
     ).join('\n');
 
-    return `Eres el asistente de IA de Seya Shop, un negocio de venta de servicios de telecomunicaciones en Colombia.
+    return `Eres **Seya AI**, el agente inteligente de Seya Shop, un negocio de venta de servicios de telecomunicaciones en Colombia.
+
+Tu rol es ser un agente proactivo: no solo respondes preguntas, también das recomendaciones, alertas y sugerencias para mejorar el negocio. Actúa como un asesor financiero y de negocio personal.
 
 DATOS DEL NEGOCIO:
 - Facturas totales: ${totalFacturas}
-- Pendientes de cobro: ${pendientesCobro.length} (Total: ${formatearDinero(montoPorCobrar)})
+- Pendientes de cobro: ${pendientesCobro.length} facturas (Total por cobrar: ${formatearDinero(montoPorCobrar)})
 - Pendientes de pago a proveedores: ${pendientesPago.length}
 - Gastos fijos mensuales: ${formatearDinero(totalGastosFijos)}
 - Presupuesto mensual: ${formatearDinero(presupuestoMensual)}
 
-${pendientesCobro.length > 0 ? `DEUDORES:\n${deudoresInfo}` : 'No hay facturas pendientes de cobro.'}
+${Object.keys(deudoresPorRevendedor).length > 0 ? `DEUDORES (agrupados por revendedor/cliente):\n${deudoresInfo}\nTotal por cobrar: ${formatearDinero(montoPorCobrar)}` : 'No hay facturas pendientes de cobro.'}
 
 ${gastosFijos.length > 0 ? `GASTOS FIJOS:\n${gastosInfo}` : 'No hay gastos fijos registrados.'}
 
 ${transacciones.length > 0 ? `ÚLTIMAS TRANSACCIONES:\n${ultimasTransacciones}` : 'No hay transacciones registradas.'}
 
 INSTRUCCIONES:
+- Te llamas Seya AI. Preséntate así si te preguntan.
 - Responde siempre en español colombiano
-- Sé conciso, directo y útil
-- Usa datos reales del negocio para responder
-- Si necesitas más datos, dilo
+- Sé directo, conciso y proactivo
+- USA SOLO los datos proporcionados arriba. Los montos de deudores ya están agrupados por revendedor/cliente - NO los recalcules ni inventes cifras distintas.
+- Si te preguntan por deudores, usa EXACTAMENTE los montos listados arriba
+- Da recomendaciones y alertas cuando sea relevante
 - Formatea montos en pesos colombianos
 - Usa markdown: **negrita**, listas con -, encabezados con ##`;
   }, [facturas, gastosFijos, transacciones, presupuestoMensual, montoPorCobrar]);
@@ -352,14 +369,14 @@ INSTRUCCIONES:
         )}
       </AnimatePresence>
 
-      {/* Backdrop */}
+      {/* Backdrop - mobile only */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 z-[89] sm:backdrop-blur-sm"
+            className="fixed inset-0 bg-black/20 z-[89] sm:bg-transparent"
             onClick={onToggle}
           />
         )}
@@ -382,8 +399,8 @@ INSTRUCCIONES:
                   <Bot size={18} className="text-white" />
                 </div>
                 <div>
-                  <h2 className="font-bold text-white text-sm">Asistente IA</h2>
-                  <p className="text-[10px] text-gray-500">Seya Shop</p>
+                  <h2 className="font-bold text-white text-sm">Seya AI</h2>
+                  <p className="text-[10px] text-cyan-400/60">Tu agente de negocio</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -428,9 +445,9 @@ INSTRUCCIONES:
                   <div className="bg-gradient-to-tr from-cyan-600 to-blue-600 p-4 rounded-2xl shadow-lg shadow-cyan-500/25 mb-4">
                     <Bot size={28} className="text-white" />
                   </div>
-                  <h2 className="text-lg font-bold text-white mb-1">Asistente IA</h2>
+                  <h2 className="text-lg font-bold text-white mb-1">Seya AI</h2>
                   <p className="text-gray-400 text-xs mb-4 max-w-xs">
-                    Pregúntame sobre tu negocio, analiza tus finanzas o pide recomendaciones.
+                    Soy tu agente inteligente. Analizo tus datos y te ayudo a tomar decisiones para tu negocio.
                   </p>
                   <div className="grid grid-cols-2 gap-2 w-full max-w-xs">
                     {quickSuggestions.map((s) => (
