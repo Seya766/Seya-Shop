@@ -138,7 +138,7 @@ const renderMarkdown = (text: string): React.ReactNode => {
 };
 
 const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
-  const { facturas, gastosFijos, transacciones, presupuestoMensual } = useData();
+  const { facturas, gastosFijos, transacciones, presupuestoMensual, facturasOcultas, metasFinancieras, metaAhorro, pagosRevendedores } = useData();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -148,16 +148,41 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
   const [showScrollDown, setShowScrollDown] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Quick stats
-  const facturasPendientes = facturas.filter(f => !f.cobradoACliente);
-  const montoPorCobrar = facturasPendientes.reduce((sum, f) => sum + (f.cobroCliente - f.abono), 0);
+  // Filter out hidden invoices
+  const facturasVisibles = facturas.filter(f => !facturasOcultas.includes(f.id));
+
+  // Quick stats (null-safe)
+  const facturasPendientes = facturasVisibles.filter(f => !f.cobradoACliente);
+  const montoPorCobrar = facturasPendientes.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.abono || 0)), 0);
 
   // Build system prompt
   const buildSystemPrompt = useCallback((): string => {
-    const totalFacturas = facturas.length;
-    const pendientesCobro = facturas.filter(f => !f.cobradoACliente);
-    const pendientesPago = facturas.filter(f => !f.pagadoAProveedor);
-    const totalGastosFijos = gastosFijos.reduce((sum, g) => sum + g.monto, 0);
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+    const totalFacturas = facturasVisibles.length;
+    const pendientesCobro = facturasVisibles.filter(f => !f.cobradoACliente);
+    const pendientesPago = facturasVisibles.filter(f => !f.pagadoAProveedor);
+    const totalGastosFijos = gastosFijos.reduce((sum, g) => sum + (g.monto || 0), 0);
+
+    // Monthly invoice data
+    const facturasEsteMes = facturasVisibles.filter(f => f.fechaISO?.startsWith(currentMonth));
+    const facturasMesPasado = facturasVisibles.filter(f => f.fechaISO?.startsWith(prevMonth));
+    const gananciaEsteMes = facturasEsteMes.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.costoInicial || 0)), 0);
+    const gananciaMesPasado = facturasMesPasado.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.costoInicial || 0)), 0);
+    const ventasEsteMes = facturasEsteMes.reduce((sum, f) => sum + (f.cobroCliente || 0), 0);
+    const ventasMesPasado = facturasMesPasado.reduce((sum, f) => sum + (f.cobroCliente || 0), 0);
+    const cobradoEsteMes = facturasEsteMes.filter(f => f.cobradoACliente).reduce((sum, f) => sum + (f.cobroCliente || 0), 0);
+
+    // Monthly transaction data
+    const transEsteMes = transacciones.filter(t => t.fecha?.startsWith(currentMonth));
+    const transMesPasado = transacciones.filter(t => t.fecha?.startsWith(prevMonth));
+    const ingresosEsteMes = transEsteMes.filter(t => t.tipo === 'ingreso').reduce((sum, t) => sum + (t.monto || 0), 0);
+    const gastosEsteMes = transEsteMes.filter(t => t.tipo === 'gasto').reduce((sum, t) => sum + (t.monto || 0), 0);
+    const ingresosMesPasado = transMesPasado.filter(t => t.tipo === 'ingreso').reduce((sum, t) => sum + (t.monto || 0), 0);
+    const gastosMesPasado = transMesPasado.filter(t => t.tipo === 'gasto').reduce((sum, t) => sum + (t.monto || 0), 0);
 
     // Group debtors by revendedor (matches how the app displays them)
     const deudoresPorRevendedor: Record<string, { total: number; count: number }> = {};
@@ -166,7 +191,7 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
       if (!deudoresPorRevendedor[key]) {
         deudoresPorRevendedor[key] = { total: 0, count: 0 };
       }
-      deudoresPorRevendedor[key].total += (f.cobroCliente - f.abono);
+      deudoresPorRevendedor[key].total += ((f.cobroCliente || 0) - (f.abono || 0));
       deudoresPorRevendedor[key].count++;
     });
 
@@ -177,40 +202,77 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
       ).join('\n');
 
     const gastosInfo = gastosFijos.map(g =>
-      `  - ${g.nombre}: ${formatearDinero(g.monto)} (${g.pagadoEsteMes ? 'pagado' : 'pendiente'})`
+      `  - ${g.nombre}: ${formatearDinero(g.monto || 0)} | Categoría: ${g.categoria} | ${g.pagadoEsteMes ? 'PAGADO' : 'PENDIENTE'} | Corte día ${g.diaCorte}`
     ).join('\n');
 
-    const ultimasTransacciones = transacciones.slice(-10).map(t =>
-      `  - ${t.fecha}: ${t.tipo === 'ingreso' ? '+' : '-'}${formatearDinero(t.monto)} - ${t.descripcion}`
+    const transaccionesInfo = transacciones.slice(-20).map(t =>
+      `  - ${t.fecha}: ${t.tipo === 'ingreso' ? '+' : '-'}${formatearDinero(t.monto || 0)} | ${t.categoria} | ${t.descripcion}`
     ).join('\n');
+
+    const metasInfo = metasFinancieras.filter(m => m.activa).map(m =>
+      `  - ${m.nombre}: ${formatearDinero(m.montoActual || 0)} de ${formatearDinero(m.montoObjetivo || 0)} (${Math.round(((m.montoActual || 0) / (m.montoObjetivo || 1)) * 100)}%) | Prioridad: ${m.prioridad}`
+    ).join('\n');
+
+    const pagosInfo = pagosRevendedores.slice(-10).map(p =>
+      `  - ${p.fecha}: ${p.revendedor} - ${formatearDinero(p.montoTotal || 0)}${p.nota ? ` (${p.nota})` : ''}`
+    ).join('\n');
+
+    const totalPorCobrar = pendientesCobro.reduce((sum, f) => sum + ((f.cobroCliente || 0) - (f.abono || 0)), 0);
 
     return `Eres **Seya AI**, el agente inteligente de Seya Shop, un negocio de venta de servicios de telecomunicaciones en Colombia.
 
-Tu rol es ser un agente proactivo: no solo respondes preguntas, también das recomendaciones, alertas y sugerencias para mejorar el negocio. Actúa como un asesor financiero y de negocio personal.
+Tu rol es ser un agente proactivo: das recomendaciones, alertas y sugerencias. Actúas como asesor financiero y de negocio personal.
 
-DATOS DEL NEGOCIO:
+═══ RESUMEN GENERAL ═══
 - Facturas totales: ${totalFacturas}
-- Pendientes de cobro: ${pendientesCobro.length} facturas (Total por cobrar: ${formatearDinero(montoPorCobrar)})
+- Pendientes de cobro: ${pendientesCobro.length} facturas (${formatearDinero(totalPorCobrar)})
 - Pendientes de pago a proveedores: ${pendientesPago.length}
-- Gastos fijos mensuales: ${formatearDinero(totalGastosFijos)}
 - Presupuesto mensual: ${formatearDinero(presupuestoMensual)}
+- Meta de ahorro: ${formatearDinero(metaAhorro.monto || 0)} (${metaAhorro.activa ? 'activa' : 'inactiva'})
 
-${Object.keys(deudoresPorRevendedor).length > 0 ? `DEUDORES (agrupados por revendedor/cliente):\n${deudoresInfo}\nTotal por cobrar: ${formatearDinero(montoPorCobrar)}` : 'No hay facturas pendientes de cobro.'}
+═══ MES ACTUAL (${currentMonth}) ═══
+- Facturas creadas: ${facturasEsteMes.length}
+- Ventas totales: ${formatearDinero(ventasEsteMes)}
+- Ganancia bruta (ventas - costo): ${formatearDinero(gananciaEsteMes)}
+- Ya cobrado: ${formatearDinero(cobradoEsteMes)}
+- Ingresos registrados: ${formatearDinero(ingresosEsteMes)}
+- Gastos registrados: ${formatearDinero(gastosEsteMes)}
+- Balance transacciones: ${formatearDinero(ingresosEsteMes - gastosEsteMes)}
 
-${gastosFijos.length > 0 ? `GASTOS FIJOS:\n${gastosInfo}` : 'No hay gastos fijos registrados.'}
+═══ MES ANTERIOR (${prevMonth}) ═══
+- Facturas creadas: ${facturasMesPasado.length}
+- Ventas totales: ${formatearDinero(ventasMesPasado)}
+- Ganancia bruta: ${formatearDinero(gananciaMesPasado)}
+- Ingresos: ${formatearDinero(ingresosMesPasado)}
+- Gastos: ${formatearDinero(gastosMesPasado)}
+- Balance: ${formatearDinero(ingresosMesPasado - gastosMesPasado)}
 
-${transacciones.length > 0 ? `ÚLTIMAS TRANSACCIONES:\n${ultimasTransacciones}` : 'No hay transacciones registradas.'}
+═══ DEUDORES (agrupados por revendedor) ═══
+${Object.keys(deudoresPorRevendedor).length > 0 ? `${deudoresInfo}\nTotal por cobrar: ${formatearDinero(totalPorCobrar)}` : 'No hay deudores.'}
 
-INSTRUCCIONES:
+═══ GASTOS FIJOS MENSUALES (Total: ${formatearDinero(totalGastosFijos)}) ═══
+${gastosFijos.length > 0 ? gastosInfo : 'No hay gastos fijos.'}
+
+═══ ÚLTIMAS TRANSACCIONES ═══
+${transacciones.length > 0 ? transaccionesInfo : 'No hay transacciones.'}
+
+═══ METAS FINANCIERAS ═══
+${metasFinancieras.filter(m => m.activa).length > 0 ? metasInfo : 'No hay metas activas.'}
+
+═══ ÚLTIMOS PAGOS A REVENDEDORES ═══
+${pagosRevendedores.length > 0 ? pagosInfo : 'No hay pagos registrados.'}
+
+═══ INSTRUCCIONES ═══
 - Te llamas Seya AI. Preséntate así si te preguntan.
 - Responde siempre en español colombiano
 - Sé directo, conciso y proactivo
-- USA SOLO los datos proporcionados arriba. Los montos de deudores ya están agrupados por revendedor/cliente - NO los recalcules ni inventes cifras distintas.
-- Si te preguntan por deudores, usa EXACTAMENTE los montos listados arriba
+- USA SOLO los datos proporcionados arriba - NO inventes cifras
+- Los montos de deudores ya están agrupados - repórtalos tal cual
+- Conoces tanto el apartado de Negocio como el de Finanzas
 - Da recomendaciones y alertas cuando sea relevante
 - Formatea montos en pesos colombianos
 - Usa markdown: **negrita**, listas con -, encabezados con ##`;
-  }, [facturas, gastosFijos, transacciones, presupuestoMensual, montoPorCobrar]);
+  }, [facturasVisibles, gastosFijos, transacciones, presupuestoMensual, metasFinancieras, metaAhorro, pagosRevendedores, montoPorCobrar]);
 
   // Auto-scroll
   const scrollToBottom = useCallback(() => {
