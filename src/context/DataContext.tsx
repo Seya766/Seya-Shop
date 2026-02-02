@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import { doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, writeBatch, waitForPendingWrites } from 'firebase/firestore';
 import { db, initAuth } from '../firebase/config';
 import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
@@ -27,6 +27,7 @@ interface DataContextType {
   setPresupuestoMensual: (value: number | ((prev: number) => number)) => void;
   facturasOcultas: number[];
   setFacturasOcultas: (value: number[] | ((prev: number[]) => number[])) => void;
+  syncStatus: 'synced' | 'syncing' | 'pending';
   descargarBackup: () => void;
   importarBackup: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
@@ -58,6 +59,23 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [metasFinancieras, setMetasFinancierasState] = useState<MetaFinanciera[]>(DEFAULT_VALUES.metasFinancieras);
   const [presupuestoMensual, setPresupuestoMensualState] = useState<number>(DEFAULT_VALUES.presupuestoMensual);
   const [facturasOcultas, setFacturasOcultasState] = useState<number[]>(DEFAULT_VALUES.facturasOcultas);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'pending'>('synced');
+
+  // Sync pending writes when coming back online
+  useEffect(() => {
+    const handleOnline = async () => {
+      setSyncStatus('syncing');
+      try {
+        await waitForPendingWrites(db);
+        setSyncStatus('synced');
+      } catch {
+        setSyncStatus('pending');
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -135,11 +153,16 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const saveToFirestore = useCallback(async (key: string, value: unknown) => {
     if (!userId) return;
+    setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
       const docRef = doc(db, 'users', userId, 'data', key);
       await setDoc(docRef, { value, updatedAt: new Date().toISOString() });
+      if (navigator.onLine) {
+        setSyncStatus('synced');
+      }
     } catch (error) {
       console.error(`Error guardando ${key}:`, error);
+      setSyncStatus('pending');
     }
   }, [userId]);
 
@@ -307,6 +330,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       metasFinancieras, setMetasFinancieras,
       presupuestoMensual, setPresupuestoMensual,
       facturasOcultas, setFacturasOcultas,
+      syncStatus,
       descargarBackup, importarBackup,
     }}>
       {children}
