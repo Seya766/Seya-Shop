@@ -3,10 +3,11 @@ import { Send, Trash2, ArrowDown, Bot, User, AlertCircle, FileText, DollarSign, 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../context/DataContext';
 import { formatearDineroCorto, getColombiaISO, getColombiaDateOnly, obtenerHoraColombiana } from '../utils/helpers';
-import type { Factura, Transaccion, CategoriaGasto } from '../utils/types';
+import type { Factura, Transaccion, CategoriaGasto, GastoFijo } from '../utils/types';
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const CHAT_STORAGE_KEY = 'seya-ai-chat';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'tool';
@@ -258,11 +259,112 @@ const AI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'eliminar_transaccion',
+      description: 'Elimina una transacción (ingreso o gasto) existente. Busca por descripción.',
+      parameters: {
+        type: 'object',
+        properties: {
+          descripcion: { type: 'string', description: 'Descripción o parte del nombre de la transacción a eliminar' },
+        },
+        required: ['descripcion'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'modificar_transaccion',
+      description: 'Modifica una transacción (ingreso o gasto) existente. Busca por descripción.',
+      parameters: {
+        type: 'object',
+        properties: {
+          descripcion: { type: 'string', description: 'Descripción de la transacción a buscar' },
+          nueva_descripcion: { type: 'string', description: 'Nueva descripción' },
+          nuevo_monto: { type: 'number', description: 'Nuevo monto' },
+          nuevo_tipo: { type: 'string', enum: ['ingreso', 'gasto'], description: 'Cambiar tipo' },
+          nueva_categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
+        },
+        required: ['descripcion'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'crear_gasto_fijo',
+      description: 'Crea un gasto fijo mensual recurrente (ej: arriendo, internet, servicios).',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del gasto fijo' },
+          monto: { type: 'number', description: 'Monto mensual estimado' },
+          categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
+          diaCorte: { type: 'number', description: 'Día del mes en que se paga (1-31). Default: 1' },
+        },
+        required: ['nombre', 'monto'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'modificar_gasto_fijo',
+      description: 'Modifica un gasto fijo existente. Busca por nombre.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del gasto fijo a buscar' },
+          nuevo_nombre: { type: 'string', description: 'Nuevo nombre' },
+          nuevo_monto: { type: 'number', description: 'Nuevo monto mensual' },
+          nueva_categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
+          nuevo_diaCorte: { type: 'number', description: 'Nuevo día de corte' },
+        },
+        required: ['nombre'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'eliminar_gasto_fijo',
+      description: 'Elimina un gasto fijo. Busca por nombre.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del gasto fijo a eliminar' },
+        },
+        required: ['nombre'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'marcar_gasto_fijo_pagado',
+      description: 'Marca un gasto fijo como pagado este mes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del gasto fijo' },
+          montoPagado: { type: 'number', description: 'Monto real pagado (si difiere del estimado). Si no se da, usa el monto del gasto fijo.' },
+        },
+        required: ['nombre'],
+      },
+    },
+  },
 ];
 
 const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
-  const { facturas, setFacturas, gastosFijos, transacciones, setTransacciones, presupuestoMensual, facturasOcultas, metasFinancieras, metaAhorro, pagosRevendedores } = useData();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { facturas, setFacturas, gastosFijos, setGastosFijos, transacciones, setTransacciones, presupuestoMensual, facturasOcultas, metasFinancieras, metaAhorro, pagosRevendedores } = useData();
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -445,13 +547,22 @@ DATOS EN TIEMPO REAL:
 ${JSON.stringify(data, null, 2)}
 
 ACCIONES QUE PODÉS EJECUTAR (usa las herramientas/tools cuando el usuario lo pida):
-- crear_factura: Crear una factura nueva. Soporta porcentaje de cobro (ej: al 40% = montoFactura * 0.40)
-- modificar_factura: Modificar campos de una factura existente (cliente, monto, porcentaje, servicio, etc)
-- eliminar_factura: Eliminar una factura del sistema
-- registrar_abono: Registrar un pago/abono de un cliente
-- crear_transaccion: Registrar un ingreso o gasto en Finanzas
+FACTURAS:
+- crear_factura: Crear factura nueva. Soporta porcentaje (ej: al 40% = montoFactura * 0.40)
+- modificar_factura: Modificar campos de factura existente
+- eliminar_factura: Eliminar factura
+- registrar_abono: Registrar pago/abono de un cliente
 - marcar_pagado_proveedor: Marcar factura como pagada al proveedor
-IMPORTANTE: Usá las herramientas SOLO cuando el usuario explícitamente pida hacer una acción. Si te piden MODIFICAR, usá modificar_factura, NO crear una nueva. Para preguntas de información, respondé normalmente sin usar herramientas.
+TRANSACCIONES:
+- crear_transaccion: Registrar ingreso o gasto en Finanzas
+- modificar_transaccion: Modificar transacción existente (descripción, monto, tipo, categoría)
+- eliminar_transaccion: Eliminar transacción existente
+GASTOS FIJOS:
+- crear_gasto_fijo: Crear gasto fijo mensual recurrente
+- modificar_gasto_fijo: Modificar gasto fijo (nombre, monto, categoría, día de corte)
+- eliminar_gasto_fijo: Eliminar gasto fijo
+- marcar_gasto_fijo_pagado: Marcar gasto fijo como pagado este mes
+REGLAS: Usá herramientas SOLO cuando el usuario pida hacer una acción. Si te piden MODIFICAR, usá la herramienta de modificar correspondiente, NO crear uno nuevo. Para preguntas de info, respondé sin herramientas.
 
 CÓMO RESPONDER:
 - Español colombiano, natural y directo. Nada de frases genéricas ni "según los datos proporcionados"
@@ -483,6 +594,17 @@ CÓMO RESPONDER:
     const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     setShowScrollDown(!isAtBottom);
   };
+
+  // Persist chat to localStorage
+  useEffect(() => {
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+      } else {
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+      }
+    } catch { /* ignore quota errors */ }
+  }, [messages]);
 
   // Execute a tool call - returns result string
   const executeTool = useCallback((toolCall: ToolCall): string => {
@@ -649,8 +771,89 @@ CÓMO RESPONDER:
       return JSON.stringify({ ok: true, message: `Factura de ${factura.cliente} (${factura.empresa}) marcada como pagada al proveedor` });
     }
 
+    if (name === 'eliminar_transaccion') {
+      const searchTerm = args.descripcion.toLowerCase();
+      const tx = transacciones.find(t => t.descripcion.toLowerCase().includes(searchTerm));
+      if (!tx) return JSON.stringify({ ok: false, message: `No se encontró transacción "${args.descripcion}"` });
+      setTransacciones(prev => prev.filter(t => t.id !== tx.id));
+      return JSON.stringify({ ok: true, message: `${tx.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'} eliminado: ${tx.descripcion} ($${tx.monto.toLocaleString('es-CO')})` });
+    }
+
+    if (name === 'modificar_transaccion') {
+      const searchTerm = args.descripcion.toLowerCase();
+      const tx = transacciones.find(t => t.descripcion.toLowerCase().includes(searchTerm));
+      if (!tx) return JSON.stringify({ ok: false, message: `No se encontró transacción "${args.descripcion}"` });
+      const changes: string[] = [];
+      setTransacciones(prev => prev.map(t => {
+        if (t.id !== tx.id) return t;
+        const updated = { ...t };
+        if (args.nueva_descripcion) { updated.descripcion = args.nueva_descripcion; changes.push(`descripción: ${args.nueva_descripcion}`); }
+        if (args.nuevo_monto != null) { updated.monto = args.nuevo_monto; changes.push(`monto: $${args.nuevo_monto.toLocaleString('es-CO')}`); }
+        if (args.nuevo_tipo) { updated.tipo = args.nuevo_tipo; changes.push(`tipo: ${args.nuevo_tipo}`); }
+        if (args.nueva_categoria) { updated.categoria = args.nueva_categoria as CategoriaGasto; changes.push(`categoría: ${args.nueva_categoria}`); }
+        return updated;
+      }));
+      const changesStr = changes.length > 0 ? changes.join(', ') : 'sin cambios detectados';
+      return JSON.stringify({ ok: true, message: `Transacción "${tx.descripcion}" modificada: ${changesStr}` });
+    }
+
+    if (name === 'crear_gasto_fijo') {
+      const nuevo: GastoFijo = {
+        id: Date.now(),
+        nombre: args.nombre,
+        monto: args.monto,
+        categoria: (args.categoria || 'otros') as CategoriaGasto,
+        diaCorte: args.diaCorte || 1,
+        recordatorio: true,
+        pagadoEsteMes: false,
+        fechaCreacion: getColombiaISO(),
+      };
+      setGastosFijos(prev => [...prev, nuevo]);
+      return JSON.stringify({ ok: true, message: `Gasto fijo creado: ${args.nombre} por $${args.monto.toLocaleString('es-CO')}/mes (día ${nuevo.diaCorte})` });
+    }
+
+    if (name === 'modificar_gasto_fijo') {
+      const searchTerm = args.nombre.toLowerCase();
+      const gasto = gastosFijos.find(g => g.nombre.toLowerCase().includes(searchTerm));
+      if (!gasto) return JSON.stringify({ ok: false, message: `No se encontró gasto fijo "${args.nombre}"` });
+      const changes: string[] = [];
+      setGastosFijos(prev => prev.map(g => {
+        if (g.id !== gasto.id) return g;
+        const updated = { ...g };
+        if (args.nuevo_nombre) { updated.nombre = args.nuevo_nombre; changes.push(`nombre: ${args.nuevo_nombre}`); }
+        if (args.nuevo_monto != null) { updated.monto = args.nuevo_monto; changes.push(`monto: $${args.nuevo_monto.toLocaleString('es-CO')}`); }
+        if (args.nueva_categoria) { updated.categoria = args.nueva_categoria as CategoriaGasto; changes.push(`categoría: ${args.nueva_categoria}`); }
+        if (args.nuevo_diaCorte != null) { updated.diaCorte = args.nuevo_diaCorte; changes.push(`día de corte: ${args.nuevo_diaCorte}`); }
+        return updated;
+      }));
+      const changesStr = changes.length > 0 ? changes.join(', ') : 'sin cambios detectados';
+      return JSON.stringify({ ok: true, message: `Gasto fijo "${gasto.nombre}" modificado: ${changesStr}` });
+    }
+
+    if (name === 'eliminar_gasto_fijo') {
+      const searchTerm = args.nombre.toLowerCase();
+      const gasto = gastosFijos.find(g => g.nombre.toLowerCase().includes(searchTerm));
+      if (!gasto) return JSON.stringify({ ok: false, message: `No se encontró gasto fijo "${args.nombre}"` });
+      setGastosFijos(prev => prev.filter(g => g.id !== gasto.id));
+      return JSON.stringify({ ok: true, message: `Gasto fijo eliminado: ${gasto.nombre} ($${gasto.monto.toLocaleString('es-CO')}/mes)` });
+    }
+
+    if (name === 'marcar_gasto_fijo_pagado') {
+      const searchTerm = args.nombre.toLowerCase();
+      const gasto = gastosFijos.find(g => g.nombre.toLowerCase().includes(searchTerm));
+      if (!gasto) return JSON.stringify({ ok: false, message: `No se encontró gasto fijo "${args.nombre}"` });
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const montoPagado = args.montoPagado || gasto.monto;
+      setGastosFijos(prev => prev.map(g => {
+        if (g.id !== gasto.id) return g;
+        return { ...g, pagadoEsteMes: true, mesPagado: currentMonth, fechaPago: getColombiaDateOnly(), montoPagadoEsteMes: montoPagado };
+      }));
+      return JSON.stringify({ ok: true, message: `Gasto fijo "${gasto.nombre}" marcado como pagado: $${montoPagado.toLocaleString('es-CO')}` });
+    }
+
     return JSON.stringify({ ok: false, message: 'Acción no reconocida' });
-  }, [facturas, facturasOcultas, setFacturas, setTransacciones]);
+  }, [facturas, facturasOcultas, setFacturas, transacciones, setTransacciones, gastosFijos, setGastosFijos]);
 
   // Describe a tool call in human-readable Spanish
   const describeToolCall = (toolCall: ToolCall): string => {
@@ -678,6 +881,24 @@ CÓMO RESPONDER:
     if (name === 'registrar_abono') return `Registrar ${args.tipo === 'parcial' ? 'abono parcial' : 'pago'} de ${args.cliente}${args.monto ? ` por $${args.monto.toLocaleString('es-CO')}` : ' (saldo completo)'}`;
     if (name === 'crear_transaccion') return `Registrar ${args.tipo}: ${args.descripcion} por $${args.monto.toLocaleString('es-CO')}`;
     if (name === 'marcar_pagado_proveedor') return `Marcar factura de ${args.cliente} como pagada al proveedor`;
+    if (name === 'eliminar_transaccion') return `Eliminar transacción: "${args.descripcion}"`;
+    if (name === 'modificar_transaccion') {
+      const cambios: string[] = [];
+      if (args.nueva_descripcion) cambios.push(`desc: ${args.nueva_descripcion}`);
+      if (args.nuevo_monto != null) cambios.push(`monto: $${args.nuevo_monto.toLocaleString('es-CO')}`);
+      if (args.nuevo_tipo) cambios.push(`tipo: ${args.nuevo_tipo}`);
+      return `Modificar transacción "${args.descripcion}"${cambios.length > 0 ? ` → ${cambios.join(', ')}` : ''}`;
+    }
+    if (name === 'crear_gasto_fijo') return `Crear gasto fijo: ${args.nombre} ($${args.monto.toLocaleString('es-CO')}/mes)`;
+    if (name === 'modificar_gasto_fijo') {
+      const cambios: string[] = [];
+      if (args.nuevo_nombre) cambios.push(`nombre: ${args.nuevo_nombre}`);
+      if (args.nuevo_monto != null) cambios.push(`monto: $${args.nuevo_monto.toLocaleString('es-CO')}`);
+      if (args.nuevo_diaCorte != null) cambios.push(`día: ${args.nuevo_diaCorte}`);
+      return `Modificar gasto fijo "${args.nombre}"${cambios.length > 0 ? ` → ${cambios.join(', ')}` : ''}`;
+    }
+    if (name === 'eliminar_gasto_fijo') return `Eliminar gasto fijo: ${args.nombre}`;
+    if (name === 'marcar_gasto_fijo_pagado') return `Marcar como pagado: ${args.nombre}${args.montoPagado ? ` ($${args.montoPagado.toLocaleString('es-CO')})` : ''}`;
     return 'Acción desconocida';
   };
 
@@ -883,6 +1104,7 @@ CÓMO RESPONDER:
       abortControllerRef.current.abort();
     }
     setMessages([]);
+    localStorage.removeItem(CHAT_STORAGE_KEY);
     setError(null);
     setIsLoading(false);
     setPendingAction(null);
