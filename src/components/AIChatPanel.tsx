@@ -467,11 +467,19 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
           });
           return acc;
         }, {} as Record<string, unknown[]>)
-      ).map(([nombre, facturas]) => ({
-        revendedor: nombre,
-        total: (facturas as Array<{saldo: number}>).reduce((s, f) => s + f.saldo, 0),
-        facturas,
-      })).sort((a, b) => b.total - a.total),
+      ).map(([nombre, facturas]) => {
+        const total = (facturas as Array<{saldo: number}>).reduce((s, f) => s + f.saldo, 0);
+        const totalCobro = (facturas as Array<{cobro: number}>).reduce((s, f) => s + f.cobro, 0);
+        const totalAbono = (facturas as Array<{abono: number}>).reduce((s, f) => s + f.abono, 0);
+        return {
+          revendedor: nombre,
+          cantidad_facturas: facturas.length,
+          total_cobro: totalCobro,
+          total_abonado: totalAbono,
+          saldo_pendiente: total,
+          facturas,
+        };
+      }).sort((a, b) => b.saldo_pendiente - a.saldo_pendiente),
       garantias_pendientes: facturasVisibles.filter(f => f.usoGarantia && !f.garantiaResuelta).map(f => ({
         cliente: f.cliente, revendedor: f.revendedor, servicio: f.empresa,
         fecha: f.fechaDisplay || f.fechaISO?.slice(0, 10),
@@ -579,6 +587,7 @@ CÓMO RESPONDER:
 - Español colombiano, natural y directo. Nada de frases genéricas ni "según los datos proporcionados"
 - Respondé como si estuvieras viendo la app junto con el usuario — porque literalmente tenés los mismos datos
 - Usá los números exactos del JSON. Nunca inventes cifras
+- ARITMÉTICA: NUNCA hagas sumas manuales paso a paso. Los campos "saldo_pendiente", "total_cobro", "total_abonado" en cada deudor ya están PRE-CALCULADOS y son EXACTOS. Usá esos valores directamente. Si te piden verificar un total, mostrá el campo pre-calculado, NO sumes factura por factura
 - Cuando te pregunten por fechas, montos o detalles de facturas, buscá en el JSON y respondé con precisión
 - Si te preguntan sobre la app, podés opinar, explicar funcionalidades y sugerir mejoras — la conocés toda
 - Sé proactivo: si ves algo importante (deuda vieja, gasto alto, meta atrasada), mencionalo
