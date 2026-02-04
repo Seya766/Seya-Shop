@@ -618,7 +618,8 @@ CÓMO RESPONDER:
   const executeTool = useCallback((toolCall: ToolCall): string => {
     // Strip null values - LLM sometimes sends null for optional params it doesn't want to change
     const rawArgs = JSON.parse(toolCall.function.arguments);
-    const args: Record<string, unknown> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const args: Record<string, any> = {};
     for (const [k, v] of Object.entries(rawArgs)) {
       if (v !== null && v !== undefined) args[k] = v;
     }
