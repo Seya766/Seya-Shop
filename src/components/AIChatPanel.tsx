@@ -283,6 +283,7 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
   const buildSystemPrompt = useCallback((): string => {
     const now = new Date();
     const hoy = now.toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Bogota' });
+    const horaExacta = now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Bogota' });
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
@@ -316,6 +317,7 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
     // Build structured data object
     const data = {
       fecha_hoy: hoy,
+      hora_actual: horaExacta,
       resumen: {
         facturas_totales: facturasVisibles.length,
         pendientes_cobro: { cantidad: pendientesCobro.length, monto: totalPorCobrar },
@@ -431,7 +433,7 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
       })),
     };
 
-    return `Eres Seya AI. Hoy es ${hoy}.
+    return `Eres Seya AI. Hoy es ${hoy}, son las ${horaExacta}.
 
 QUIÉN ERES: Sos el asistente inteligente integrado en Seya Shop, la app de gestión de negocio del usuario. No sos un chatbot externo — sos parte de la app. Tenés acceso directo a todos los datos en tiempo real. Hablá como un socio de confianza que conoce el negocio por dentro.
 
@@ -528,27 +530,57 @@ CÓMO RESPONDER:
       );
       if (!factura) return JSON.stringify({ ok: false, message: `No se encontró factura para "${args.cliente}"` });
 
+      // Accept both naming conventions (nuevo_X and X) - LLM may confuse crear/modificar field names
+      const newPct = args.nuevo_porcentaje ?? args.porcentaje;
+      const newMonto = args.nuevo_montoFactura ?? args.montoFactura;
+      const newCobro = args.nuevo_cobroCliente ?? args.cobroCliente;
+      const newCliente = args.nuevo_cliente;
+      const newTelefono = args.nuevo_telefono;
+      const newRevendedor = args.nuevo_revendedor;
+      const newEmpresa = args.nueva_empresa ?? args.empresa;
+
+      // Compute final values upfront so result message is accurate
+      const baseMonto = newMonto ?? factura.montoFactura;
+      let finalCobro = factura.cobroCliente || 0;
+      let finalPct = factura.porcentajeAplicado || 0;
+      const changes: string[] = [];
+
+      if (newMonto != null && newMonto !== factura.montoFactura) changes.push(`monto factura: $${baseMonto.toLocaleString('es-CO')}`);
+      if (newPct != null) {
+        finalPct = newPct;
+        finalCobro = Math.round(baseMonto * newPct / 100);
+        changes.push(`${newPct}% → cobro $${finalCobro.toLocaleString('es-CO')}`);
+      } else if (newCobro != null) {
+        finalCobro = newCobro;
+        changes.push(`cobro: $${finalCobro.toLocaleString('es-CO')}`);
+      }
+      if (newEmpresa && newEmpresa !== factura.empresa) changes.push(`servicio: ${newEmpresa}`);
+      if (newCliente) changes.push(`cliente: ${newCliente}`);
+      if (newTelefono) changes.push(`teléfono: ${newTelefono}`);
+      if (newRevendedor) changes.push(`revendedor: ${newRevendedor}`);
+
       setFacturas(prev => prev.map(f => {
         if (f.id !== factura.id) return f;
         const updated = { ...f };
-        if (args.nuevo_cliente) updated.cliente = args.nuevo_cliente;
-        if (args.nuevo_telefono) updated.telefono = args.nuevo_telefono;
-        if (args.nuevo_revendedor) updated.revendedor = args.nuevo_revendedor;
-        if (args.nueva_empresa) updated.empresa = args.nueva_empresa;
-        if (args.nuevo_montoFactura != null) {
-          updated.montoFactura = args.nuevo_montoFactura;
-          updated.costoInicial = args.nuevo_montoFactura;
+        if (newCliente) updated.cliente = newCliente;
+        if (newTelefono) updated.telefono = newTelefono;
+        if (newRevendedor) updated.revendedor = newRevendedor;
+        if (newEmpresa) updated.empresa = newEmpresa;
+        if (newMonto != null) {
+          updated.montoFactura = baseMonto;
+          updated.costoInicial = baseMonto;
         }
-        if (args.nuevo_porcentaje != null) {
-          const base = updated.montoFactura;
-          updated.porcentajeAplicado = args.nuevo_porcentaje;
-          updated.cobroCliente = Math.round(base * args.nuevo_porcentaje / 100);
-        } else if (args.nuevo_cobroCliente != null) {
-          updated.cobroCliente = args.nuevo_cobroCliente;
+        if (newPct != null) {
+          updated.porcentajeAplicado = finalPct;
+          updated.cobroCliente = finalCobro;
+        } else if (newCobro != null) {
+          updated.cobroCliente = finalCobro;
         }
         return updated;
       }));
-      return JSON.stringify({ ok: true, message: `Factura de ${factura.cliente} (${factura.empresa}) modificada correctamente` });
+
+      const changesStr = changes.length > 0 ? changes.join(', ') : 'sin cambios detectados';
+      return JSON.stringify({ ok: true, message: `Factura de ${factura.cliente} (${factura.empresa}) modificada: ${changesStr}` });
     }
 
     if (name === 'eliminar_factura') {
@@ -631,10 +663,14 @@ CÓMO RESPONDER:
     }
     if (name === 'modificar_factura') {
       const cambios: string[] = [];
-      if (args.nuevo_porcentaje != null) cambios.push(`porcentaje: ${args.nuevo_porcentaje}%`);
-      if (args.nuevo_cobroCliente != null) cambios.push(`cobro: $${args.nuevo_cobroCliente.toLocaleString('es-CO')}`);
-      if (args.nuevo_montoFactura != null) cambios.push(`monto: $${args.nuevo_montoFactura.toLocaleString('es-CO')}`);
-      if (args.nueva_empresa) cambios.push(`servicio: ${args.nueva_empresa}`);
+      const pct = args.nuevo_porcentaje ?? args.porcentaje;
+      const cobro = args.nuevo_cobroCliente ?? args.cobroCliente;
+      const monto = args.nuevo_montoFactura ?? args.montoFactura;
+      const empresa = args.nueva_empresa ?? args.empresa;
+      if (pct != null) cambios.push(`porcentaje: ${pct}%`);
+      if (cobro != null) cambios.push(`cobro: $${cobro.toLocaleString('es-CO')}`);
+      if (monto != null) cambios.push(`monto: $${monto.toLocaleString('es-CO')}`);
+      if (empresa) cambios.push(`servicio: ${empresa}`);
       if (args.nuevo_cliente) cambios.push(`cliente: ${args.nuevo_cliente}`);
       return `Modificar factura de ${args.cliente}${cambios.length > 0 ? ` → ${cambios.join(', ')}` : ''}`;
     }
@@ -689,6 +725,32 @@ CÓMO RESPONDER:
         const parsed = JSON.parse(errorBody);
         detail = parsed?.error?.message || parsed?.message || detail;
       } catch { /* use statusText */ }
+
+      // If Groq failed to generate a valid function call, retry without tools (text-only)
+      if (response.status === 400 && detail.includes('Failed to call a function')) {
+        const retryResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: GROQ_MODEL,
+            messages: [
+              { role: 'system', content: buildSystemPrompt() },
+              ...apiMessages,
+            ],
+            temperature: 0.7,
+            max_tokens: 4096,
+          }),
+          signal: controller.signal,
+        });
+        if (!retryResponse.ok) throw new Error(`Error ${response.status}: ${detail}`);
+        const retryResult = await retryResponse.json();
+        const retryChoice = retryResult.choices?.[0]?.message;
+        return { content: retryChoice?.content || '' };
+      }
+
       throw new Error(`Error ${response.status}: ${detail}`);
     }
 
@@ -705,24 +767,41 @@ CÓMO RESPONDER:
     setIsLoading(true);
 
     try {
-      // Execute the tool
+      // Execute the tool first
       const result = executeTool(tool_call);
+      const parsed = JSON.parse(result);
 
-      // Build tool response message (name is required by Groq for tool role)
-      const toolResponse: ChatMessage = { role: 'tool', content: result, tool_call_id: tool_call.id, name: tool_call.function.name };
-      const assistantToolMsg: ChatMessage = { role: 'assistant', content: '', tool_calls: [tool_call] };
+      if (!parsed.ok) {
+        // Tool execution itself failed (e.g. invoice not found)
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'assistant', content: `❌ ${parsed.message}` };
+          return updated;
+        });
+        return;
+      }
 
-      // Send tool result back to AI for a natural response
-      const fullConversation = [...contextMessages, assistantToolMsg, toolResponse];
-      const aiResponse = await callAI(fullConversation);
+      // Tool succeeded - now try to get AI's natural language response
+      try {
+        const toolResponse: ChatMessage = { role: 'tool', content: result, tool_call_id: tool_call.id, name: tool_call.function.name };
+        const assistantToolMsg: ChatMessage = { role: 'assistant', content: '', tool_calls: [tool_call] };
+        const fullConversation = [...contextMessages, assistantToolMsg, toolResponse];
+        const aiResponse = await callAI(fullConversation);
 
-      // Show the AI's response about the action
-      const finalContent = aiResponse.content || JSON.parse(result).message;
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', content: `✅ ${finalContent}` };
-        return updated;
-      });
+        const finalContent = aiResponse.content || parsed.message;
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'assistant', content: `✅ ${finalContent}` };
+          return updated;
+        });
+      } catch {
+        // AI follow-up failed (400 etc), but tool already executed - show tool result
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1] = { role: 'assistant', content: `✅ ${parsed.message}` };
+          return updated;
+        });
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Error ejecutando acción';
       setMessages(prev => {
