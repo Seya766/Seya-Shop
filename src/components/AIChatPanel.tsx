@@ -156,6 +156,7 @@ const renderMarkdown = (text: string): React.ReactNode => {
 };
 
 // Tool definitions for Groq function calling
+// NOTE: Optional params use type array ["string","null"] because Llama sometimes sends null for omitted fields
 const AI_TOOLS = [
   {
     type: 'function' as const,
@@ -166,12 +167,12 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre o número del cliente' },
-          telefono: { type: 'string', description: 'Teléfono del cliente (opcional)' },
-          revendedor: { type: 'string', description: 'Nombre del revendedor. Si no se especifica, usar "Directo"' },
+          telefono: { type: ['string', 'null'], description: 'Teléfono del cliente' },
+          revendedor: { type: ['string', 'null'], description: 'Nombre del revendedor. Si no se especifica, usar "Directo"' },
           empresa: { type: 'string', description: 'Nombre del servicio o producto (ej: Wom, Movistar, Samsung)' },
           montoFactura: { type: 'number', description: 'Monto de la factura del proveedor' },
-          porcentaje: { type: 'number', description: 'Porcentaje de cobro al cliente (ej: 40 para 40%). Si se da, cobroCliente = montoFactura * porcentaje / 100' },
-          cobroCliente: { type: 'number', description: 'Monto directo a cobrar al cliente. Usar solo si no se da porcentaje. Si no se da ni porcentaje ni cobroCliente, usar montoFactura' },
+          porcentaje: { type: ['number', 'null'], description: 'Porcentaje de cobro al cliente (ej: 40 para 40%). Si se da, cobroCliente = montoFactura * porcentaje / 100' },
+          cobroCliente: { type: ['number', 'null'], description: 'Monto directo a cobrar al cliente. Usar solo si no se da porcentaje' },
         },
         required: ['cliente', 'empresa', 'montoFactura'],
       },
@@ -181,18 +182,20 @@ const AI_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'modificar_factura',
-      description: 'Modifica una factura existente. Busca por nombre de cliente y permite cambiar campos específicos.',
+      description: 'Modifica una factura existente. Busca por nombre de cliente. Solo enviar los campos que se quieren cambiar.',
       parameters: {
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre del cliente para buscar la factura a modificar' },
-          nuevo_cliente: { type: 'string', description: 'Nuevo nombre del cliente (si se quiere cambiar)' },
-          nuevo_telefono: { type: 'string', description: 'Nuevo teléfono' },
-          nuevo_revendedor: { type: 'string', description: 'Nuevo revendedor' },
-          nueva_empresa: { type: 'string', description: 'Nuevo servicio/producto' },
-          nuevo_montoFactura: { type: 'number', description: 'Nuevo monto de factura' },
-          nuevo_cobroCliente: { type: 'number', description: 'Nuevo monto a cobrar al cliente' },
-          nuevo_porcentaje: { type: 'number', description: 'Nuevo porcentaje de cobro. Si se da, recalcula cobroCliente = montoFactura * porcentaje / 100' },
+          nuevo_cliente: { type: ['string', 'null'], description: 'Nuevo nombre del cliente' },
+          nuevo_telefono: { type: ['string', 'null'], description: 'Nuevo teléfono' },
+          nuevo_revendedor: { type: ['string', 'null'], description: 'Nuevo revendedor' },
+          nueva_empresa: { type: ['string', 'null'], description: 'Nuevo servicio/producto' },
+          nuevo_montoFactura: { type: ['number', 'null'], description: 'Nuevo monto de factura' },
+          nuevo_cobroCliente: { type: ['number', 'null'], description: 'Nuevo monto a cobrar al cliente' },
+          nuevo_porcentaje: { type: ['number', 'null'], description: 'Nuevo porcentaje de cobro. Recalcula cobroCliente automáticamente' },
+          nueva_fecha: { type: ['string', 'null'], description: 'Nueva fecha de la factura en formato YYYY-MM-DD (ej: 2025-02-03)' },
+          nueva_fecha_cobro: { type: ['string', 'null'], description: 'Cambiar la fecha en que se cobró al cliente, formato YYYY-MM-DD' },
         },
         required: ['cliente'],
       },
@@ -202,7 +205,7 @@ const AI_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'eliminar_factura',
-      description: 'Elimina una factura del sistema. Busca por nombre de cliente. Pide siempre confirmación antes.',
+      description: 'Elimina una factura del sistema. Busca por nombre de cliente.',
       parameters: {
         type: 'object',
         properties: {
@@ -216,13 +219,13 @@ const AI_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'registrar_abono',
-      description: 'Registra un pago/abono de un cliente a una factura existente pendiente de cobro. Busca la factura por nombre de cliente.',
+      description: 'Registra un pago/abono de un cliente a una factura existente pendiente de cobro.',
       parameters: {
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre del cliente que paga' },
-          monto: { type: 'number', description: 'Monto del abono. Si no se especifica, se paga el saldo completo' },
-          tipo: { type: 'string', enum: ['total', 'parcial'], description: 'Si es pago total o parcial. Default: total' },
+          monto: { type: ['number', 'null'], description: 'Monto del abono. Si no se especifica, se paga el saldo completo' },
+          tipo: { type: ['string', 'null'], enum: ['total', 'parcial'], description: 'Si es pago total o parcial. Default: total' },
         },
         required: ['cliente'],
       },
@@ -239,7 +242,7 @@ const AI_TOOLS = [
           descripcion: { type: 'string', description: 'Descripción de la transacción' },
           monto: { type: 'number', description: 'Monto de la transacción' },
           tipo: { type: 'string', enum: ['ingreso', 'gasto'], description: 'Tipo: ingreso o gasto' },
-          categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
+          categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
         },
         required: ['descripcion', 'monto', 'tipo'],
       },
@@ -277,15 +280,15 @@ const AI_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'modificar_transaccion',
-      description: 'Modifica una transacción (ingreso o gasto) existente. Busca por descripción.',
+      description: 'Modifica una transacción (ingreso o gasto) existente. Busca por descripción. Solo enviar campos a cambiar.',
       parameters: {
         type: 'object',
         properties: {
           descripcion: { type: 'string', description: 'Descripción de la transacción a buscar' },
-          nueva_descripcion: { type: 'string', description: 'Nueva descripción' },
-          nuevo_monto: { type: 'number', description: 'Nuevo monto' },
-          nuevo_tipo: { type: 'string', enum: ['ingreso', 'gasto'], description: 'Cambiar tipo' },
-          nueva_categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
+          nueva_descripcion: { type: ['string', 'null'], description: 'Nueva descripción' },
+          nuevo_monto: { type: ['number', 'null'], description: 'Nuevo monto' },
+          nuevo_tipo: { type: ['string', 'null'], enum: ['ingreso', 'gasto'], description: 'Cambiar tipo' },
+          nueva_categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
         },
         required: ['descripcion'],
       },
@@ -301,8 +304,8 @@ const AI_TOOLS = [
         properties: {
           nombre: { type: 'string', description: 'Nombre del gasto fijo' },
           monto: { type: 'number', description: 'Monto mensual estimado' },
-          categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
-          diaCorte: { type: 'number', description: 'Día del mes en que se paga (1-31). Default: 1' },
+          categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
+          diaCorte: { type: ['number', 'null'], description: 'Día del mes en que se paga (1-31). Default: 1' },
         },
         required: ['nombre', 'monto'],
       },
@@ -312,15 +315,15 @@ const AI_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'modificar_gasto_fijo',
-      description: 'Modifica un gasto fijo existente. Busca por nombre.',
+      description: 'Modifica un gasto fijo existente. Busca por nombre. Solo enviar campos a cambiar.',
       parameters: {
         type: 'object',
         properties: {
           nombre: { type: 'string', description: 'Nombre del gasto fijo a buscar' },
-          nuevo_nombre: { type: 'string', description: 'Nuevo nombre' },
-          nuevo_monto: { type: 'number', description: 'Nuevo monto mensual' },
-          nueva_categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
-          nuevo_diaCorte: { type: 'number', description: 'Nuevo día de corte' },
+          nuevo_nombre: { type: ['string', 'null'], description: 'Nuevo nombre' },
+          nuevo_monto: { type: ['number', 'null'], description: 'Nuevo monto mensual' },
+          nueva_categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
+          nuevo_diaCorte: { type: ['number', 'null'], description: 'Nuevo día de corte' },
         },
         required: ['nombre'],
       },
@@ -349,7 +352,7 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           nombre: { type: 'string', description: 'Nombre del gasto fijo' },
-          montoPagado: { type: 'number', description: 'Monto real pagado (si difiere del estimado). Si no se da, usa el monto del gasto fijo.' },
+          montoPagado: { type: ['number', 'null'], description: 'Monto real pagado (si difiere del estimado)' },
         },
         required: ['nombre'],
       },
@@ -613,7 +616,12 @@ CÓMO RESPONDER:
 
   // Execute a tool call - returns result string
   const executeTool = useCallback((toolCall: ToolCall): string => {
-    const args = JSON.parse(toolCall.function.arguments);
+    // Strip null values - LLM sometimes sends null for optional params it doesn't want to change
+    const rawArgs = JSON.parse(toolCall.function.arguments);
+    const args: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(rawArgs)) {
+      if (v !== null && v !== undefined) args[k] = v;
+    }
     const name = toolCall.function.name;
 
     if (name === 'crear_factura') {
@@ -686,22 +694,51 @@ CÓMO RESPONDER:
       if (newTelefono) changes.push(`teléfono: ${newTelefono}`);
       if (newRevendedor) changes.push(`revendedor: ${newRevendedor}`);
 
+      // Date changes
+      const newFecha = args.nueva_fecha as string | undefined;
+      const newFechaCobro = args.nueva_fecha_cobro as string | undefined;
+      if (newFecha) {
+        const d = new Date(newFecha + 'T12:00:00');
+        changes.push(`fecha: ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })}`);
+      }
+      if (newFechaCobro) {
+        const d = new Date(newFechaCobro + 'T12:00:00');
+        changes.push(`fecha cobro: ${d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })}`);
+      }
+
       setFacturas(prev => prev.map(f => {
         if (f.id !== factura.id) return f;
         const updated = { ...f };
-        if (newCliente) updated.cliente = newCliente;
-        if (newTelefono) updated.telefono = newTelefono;
-        if (newRevendedor) updated.revendedor = newRevendedor;
-        if (newEmpresa) updated.empresa = newEmpresa;
+        if (newCliente) updated.cliente = newCliente as string;
+        if (newTelefono) updated.telefono = newTelefono as string;
+        if (newRevendedor) updated.revendedor = newRevendedor as string;
+        if (newEmpresa) updated.empresa = newEmpresa as string;
         if (newMonto != null) {
-          updated.montoFactura = baseMonto;
-          updated.costoInicial = baseMonto;
+          updated.montoFactura = baseMonto as number;
+          updated.costoInicial = baseMonto as number;
         }
         if (newPct != null) {
           updated.porcentajeAplicado = finalPct;
           updated.cobroCliente = finalCobro;
         } else if (newCobro != null) {
           updated.cobroCliente = finalCobro;
+        }
+        // Change invoice creation date
+        if (newFecha) {
+          updated.fechaISO = newFecha;
+          const d = new Date(newFecha + 'T12:00:00');
+          updated.fechaDisplay = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' });
+        }
+        // Change collection date (update last historialAbonos entry + fechaPagoReal)
+        if (newFechaCobro) {
+          if (updated.historialAbonos && updated.historialAbonos.length > 0) {
+            updated.historialAbonos = [...updated.historialAbonos];
+            updated.historialAbonos[updated.historialAbonos.length - 1] = {
+              ...updated.historialAbonos[updated.historialAbonos.length - 1],
+              fecha: newFechaCobro,
+            };
+          }
+          updated.fechaPagoReal = newFechaCobro;
         }
         return updated;
       }));
@@ -952,8 +989,8 @@ CÓMO RESPONDER:
         detail = parsed?.error?.message || parsed?.message || detail;
       } catch { /* use statusText */ }
 
-      // If Groq failed to generate a valid function call, retry without tools (text-only)
-      if (response.status === 400 && detail.includes('Failed to call a function')) {
+      // If Groq failed to generate/validate a function call, retry without tools (text-only)
+      if (response.status === 400 && (detail.includes('Failed to call a function') || detail.includes('tool call validation failed'))) {
         const retryResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
