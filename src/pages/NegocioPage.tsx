@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { 
-  Plus, Trash2, Check, DollarSign, AlertTriangle, ShieldAlert, ShieldCheck, 
+import {
+  Plus, Trash2, Check, DollarSign, AlertTriangle, ShieldAlert, ShieldCheck,
   Search, RefreshCw, Percent, Pencil, Save, X, Download,
   Users, Briefcase, ClipboardList, Calendar, TrendingUp, Clock, CalendarClock,
   Eye, EyeOff, Wallet, MessageCircle, Target, BarChart3, History,
   Award, Flame, Activity, Sparkles, Crown, ArrowUpRight, ArrowDownRight,
-  Layers, CircleDollarSign, List, Zap, FileText, ChevronDown, ArrowUpDown
+  Layers, CircleDollarSign, List, Zap, FileText, ChevronDown, ArrowUpDown, Link2
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { META_MENSUAL_NEGOCIO, COLORES_RANKING } from '../utils/constants';
@@ -1969,6 +1969,16 @@ const NegocioPage = () => {
     setModalHistorialPagos({ visible: true, nombre });
   }, []);
 
+  const copiarLinkPortal = useCallback((nombre: string) => {
+    const baseUrl = window.location.origin;
+    const url = `${baseUrl}/v/${encodeURIComponent(nombre.toLowerCase())}`;
+    navigator.clipboard.writeText(url).then(() => {
+      alert(`Link copiado:\n${url}`);
+    }).catch(() => {
+      prompt('Copia este link:', url);
+    });
+  }, []);
+
   const eliminarPagoRevendedor = useCallback((pagoId: number) => {
     if (window.confirm('¿Eliminar este registro de pago? (Las facturas no se modificarán)')) {
       setPagosRevendedores(prev => prev.filter(p => p.id !== pagoId));
@@ -2976,7 +2986,16 @@ const NegocioPage = () => {
                                     {rev.nombre.charAt(0).toUpperCase()}
                                   </div>
                                   <div>
-                                    <h3 className="font-bold text-white text-lg">{rev.nombre}</h3>
+                                    <div className="flex items-center gap-2">
+                                      <h3 className="font-bold text-white text-lg">{rev.nombre}</h3>
+                                      <button
+                                        onClick={() => copiarLinkPortal(rev.nombre)}
+                                        className="p-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-400 transition-colors"
+                                        title="Copiar link del portal"
+                                      >
+                                        <Link2 size={14} />
+                                      </button>
+                                    </div>
                                     <p className="text-sm text-gray-500">{rev.facturasPendientes} facturas</p>
                                   </div>
                                 </div>

@@ -44,12 +44,13 @@ const ResellerPortal = () => {
           await signInAnonymously(auth);
         }
 
-        // Real-time listener for facturas
+        // Real-time listener for facturas (case-insensitive match)
+        const nameLower = name.toLowerCase();
         const facturasRef = doc(db, 'users', USER_ID, 'data', STORAGE_KEYS.FACTURAS);
         unsubFacturas = onSnapshot(facturasRef, (snap) => {
           if (snap.exists()) {
             const all: Factura[] = snap.data().value || [];
-            setFacturas(all.filter(f => f.revendedor === name));
+            setFacturas(all.filter(f => f.revendedor?.toLowerCase() === nameLower));
             setLastUpdate(new Date());
           }
           setLoading(false);
@@ -59,12 +60,12 @@ const ResellerPortal = () => {
           setLoading(false);
         });
 
-        // Real-time listener for pagos
+        // Real-time listener for pagos (case-insensitive match)
         const pagosRef = doc(db, 'users', USER_ID, 'data', STORAGE_KEYS.PAGOS_REVENDEDORES);
         unsubPagos = onSnapshot(pagosRef, (snap) => {
           if (snap.exists()) {
             const all: PagoRevendedor[] = snap.data().value || [];
-            setPagos(all.filter(p => p.revendedor === name));
+            setPagos(all.filter(p => p.revendedor?.toLowerCase() === nameLower));
           }
         });
       } catch (err) {
