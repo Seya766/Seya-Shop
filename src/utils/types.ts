@@ -206,3 +206,15 @@ export interface CategoriaConfig {
 }
 
 export type CategoriasGastoConfig = Record<CategoriaGasto, CategoriaConfig>;
+
+// =============================================
+// TIPOS DE MULTI-TENANT
+// =============================================
+
+export interface Tenant {
+  pin: string;
+  userId: string;
+  name: string;
+  isAdmin: boolean;
+  createdAt: string;
+}

@@ -460,7 +460,7 @@ FacturaCard.displayName = 'FacturaCard';
 // MAIN COMPONENT
 // =============================================
 const NegocioPage = () => {
-  const { facturas, setFacturas, revendedoresOcultos, setRevendedoresOcultos, pagosRevendedores, setPagosRevendedores, facturasOcultas, setFacturasOcultas } = useData();
+  const { facturas, setFacturas, revendedoresOcultos, setRevendedoresOcultos, pagosRevendedores, setPagosRevendedores, facturasOcultas, setFacturasOcultas, userId } = useData();
 
   // Toggle para mostrar/ocultar facturas ocultas en la lista
   const [mostrarOcultas, setMostrarOcultas] = useState(false);
@@ -1970,14 +1970,15 @@ const NegocioPage = () => {
   }, []);
 
   const copiarLinkPortal = useCallback((nombre: string) => {
+    if (!userId) return;
     const baseUrl = window.location.origin;
-    const url = `${baseUrl}/v/${encodeURIComponent(nombre.toLowerCase())}`;
+    const url = `${baseUrl}/v/${encodeURIComponent(userId)}/${encodeURIComponent(nombre.toLowerCase())}`;
     navigator.clipboard.writeText(url).then(() => {
       alert(`Link copiado:\n${url}`);
     }).catch(() => {
       prompt('Copia este link:', url);
     });
-  }, []);
+  }, [userId]);
 
   const eliminarPagoRevendedor = useCallback((pagoId: number) => {
     if (window.confirm('¿Eliminar este registro de pago? (Las facturas no se modificarán)')) {

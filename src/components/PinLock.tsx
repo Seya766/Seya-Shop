@@ -1,47 +1,21 @@
-import { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
-import { db, auth } from '../firebase/config';
+import { useState } from 'react';
 import { Lock, Delete, ArrowRight } from 'lucide-react';
-import { LoadingScreen } from './LoadingScreen';
-
-const USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
-const PIN_KEY = 'seyaShop_pin';
-const ADMIN_KEY = 'seya-admin';
+import { useTenant } from '../context/TenantContext';
 
 interface PinLockProps {
   onUnlock: () => void;
 }
 
 const PinLock = ({ onUnlock }: PinLockProps) => {
+  const { tenants, login } = useTenant();
   const [pin, setPin] = useState('');
-  const [storedPin, setStoredPin] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
   const [confirmPin, setConfirmPin] = useState('');
   const [step, setStep] = useState<'enter' | 'confirm'>('enter');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    const loadPin = async () => {
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-        const snap = await getDoc(doc(db, 'users', USER_ID, 'data', PIN_KEY));
-        if (snap.exists()) {
-          setStoredPin(snap.data().value);
-        } else {
-          setIsCreating(true);
-        }
-      } catch (err) {
-        console.error('Error loading PIN:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadPin();
-  }, []);
+  // Check if this is first time setup (admin has no PIN)
+  const isFirstTime = tenants.length === 1 && tenants[0].isAdmin && !tenants[0].pin;
 
   const handleDigit = (d: string) => {
     setError('');
@@ -54,51 +28,52 @@ const PinLock = ({ onUnlock }: PinLockProps) => {
   };
 
   const handleSubmit = async () => {
-    if (pin.length < 4) return;
+    if (pin.length < 4 || isSubmitting) return;
+    setIsSubmitting(true);
 
-    if (isCreating) {
-      if (step === 'enter') {
-        setConfirmPin(pin);
-        setPin('');
-        setStep('confirm');
-        return;
+    try {
+      if (isFirstTime) {
+        // First time setup: create admin PIN
+        if (step === 'enter') {
+          setConfirmPin(pin);
+          setPin('');
+          setStep('confirm');
+          setIsSubmitting(false);
+          return;
+        }
+        // Confirm step
+        if (pin !== confirmPin) {
+          setError('Los PINs no coinciden');
+          setPin('');
+          setStep('enter');
+          setConfirmPin('');
+          setIsSubmitting(false);
+          return;
+        }
       }
-      // Confirm step
-      if (pin !== confirmPin) {
-        setError('Los PINs no coinciden');
-        setPin('');
-        setStep('enter');
-        setConfirmPin('');
-        return;
-      }
-      try {
-        await setDoc(doc(db, 'users', USER_ID, 'data', PIN_KEY), {
-          value: pin,
-          updatedAt: new Date().toISOString(),
-        });
-        localStorage.setItem(ADMIN_KEY, 'true');
-        onUnlock();
-      } catch {
-        setError('Error guardando PIN');
-      }
-    } else {
-      if (pin === storedPin) {
-        localStorage.setItem(ADMIN_KEY, 'true');
+
+      // Attempt login (will also handle first-time admin PIN setup)
+      const success = await login(pin);
+      if (success) {
         onUnlock();
       } else {
         setError('PIN incorrecto');
         setPin('');
       }
+    } catch {
+      setError('Error de conexión');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
-  const title = isCreating
-    ? step === 'confirm' ? 'Confirma tu PIN' : 'Crea un PIN de acceso'
+  const title = isFirstTime
+    ? step === 'confirm' ? 'Confirma tu PIN' : 'Crea tu PIN de Admin'
     : 'Ingresa tu PIN';
+
+  const subtitle = isFirstTime && step === 'enter'
+    ? 'Primera vez: crea un PIN para acceder'
+    : null;
 
   return (
     <div className="min-h-screen bg-[#0f111a] flex items-center justify-center p-4">
@@ -109,8 +84,8 @@ const PinLock = ({ onUnlock }: PinLockProps) => {
             <Lock size={28} className="text-white" />
           </div>
           <h1 className="text-xl font-semibold text-white">{title}</h1>
-          {isCreating && step === 'enter' && (
-            <p className="text-sm text-gray-500 mt-1">Este PIN protege tu app</p>
+          {subtitle && (
+            <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
           )}
         </div>
 
@@ -139,29 +114,36 @@ const PinLock = ({ onUnlock }: PinLockProps) => {
             <button
               key={d}
               onClick={() => handleDigit(d)}
-              className="h-16 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 text-white text-2xl font-medium transition-colors"
+              disabled={isSubmitting}
+              className="h-16 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 text-white text-2xl font-medium transition-colors disabled:opacity-50"
             >
               {d}
             </button>
           ))}
           <button
             onClick={handleDelete}
-            className="h-16 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 flex items-center justify-center text-gray-400 transition-colors"
+            disabled={isSubmitting}
+            className="h-16 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 flex items-center justify-center text-gray-400 transition-colors disabled:opacity-50"
           >
             <Delete size={22} />
           </button>
           <button
             onClick={() => handleDigit('0')}
-            className="h-16 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 text-white text-2xl font-medium transition-colors"
+            disabled={isSubmitting}
+            className="h-16 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/15 text-white text-2xl font-medium transition-colors disabled:opacity-50"
           >
             0
           </button>
           <button
             onClick={handleSubmit}
-            disabled={pin.length < 4}
+            disabled={pin.length < 4 || isSubmitting}
             className="h-16 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 flex items-center justify-center text-white transition-colors"
           >
-            <ArrowRight size={22} />
+            {isSubmitting ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <ArrowRight size={22} />
+            )}
           </button>
         </div>
       </div>

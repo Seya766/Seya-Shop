@@ -7,8 +7,6 @@ import { STORAGE_KEYS } from '../utils/constants';
 import { Download, RefreshCw, FileText, Clock, AlertCircle } from 'lucide-react';
 import type { Factura, PagoRevendedor } from '../utils/types';
 
-const USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
-
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
 
@@ -23,8 +21,9 @@ const fmtDate = (iso: string | null | undefined) => {
 };
 
 const ResellerPortal = () => {
-  const { revendedor } = useParams<{ revendedor: string }>();
+  const { userId, revendedor } = useParams<{ userId: string; revendedor: string }>();
   const name = decodeURIComponent(revendedor || '');
+  const tenantId = decodeURIComponent(userId || '');
 
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [pagos, setPagos] = useState<PagoRevendedor[]>([]);
@@ -33,7 +32,7 @@ const ResellerPortal = () => {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (!name) return;
+    if (!name || !tenantId) return;
 
     let unsubFacturas: (() => void) | null = null;
     let unsubPagos: (() => void) | null = null;
@@ -46,7 +45,7 @@ const ResellerPortal = () => {
 
         // Real-time listener for facturas (case-insensitive match)
         const nameLower = name.toLowerCase();
-        const facturasRef = doc(db, 'users', USER_ID, 'data', STORAGE_KEYS.FACTURAS);
+        const facturasRef = doc(db, 'users', tenantId, 'data', STORAGE_KEYS.FACTURAS);
         unsubFacturas = onSnapshot(facturasRef, (snap) => {
           if (snap.exists()) {
             const all: Factura[] = snap.data().value || [];
@@ -61,7 +60,7 @@ const ResellerPortal = () => {
         });
 
         // Real-time listener for pagos (case-insensitive match)
-        const pagosRef = doc(db, 'users', USER_ID, 'data', STORAGE_KEYS.PAGOS_REVENDEDORES);
+        const pagosRef = doc(db, 'users', tenantId, 'data', STORAGE_KEYS.PAGOS_REVENDEDORES);
         unsubPagos = onSnapshot(pagosRef, (snap) => {
           if (snap.exists()) {
             const all: PagoRevendedor[] = snap.data().value || [];
@@ -80,7 +79,7 @@ const ResellerPortal = () => {
       unsubFacturas?.();
       unsubPagos?.();
     };
-  }, [name]);
+  }, [name, tenantId]);
 
   const pendientes = facturas
     .filter(f => !f.cobradoACliente)

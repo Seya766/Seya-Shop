@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { doc, setDoc, getDoc, writeBatch, waitForPendingWrites } from 'firebase/firestore';
-import { db, initAuth } from '../firebase/config';
+import { db } from '../firebase/config';
 import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
 import { getColombiaDateOnly } from '../utils/helpers';
@@ -46,8 +46,12 @@ const DEFAULT_VALUES = {
   facturasOcultas: [] as number[]
 };
 
-export const DataProvider = ({ children }: { children: ReactNode }) => {
-  const [userId, setUserId] = useState<string | null>(null);
+interface DataProviderProps {
+  children: ReactNode;
+  userId: string;
+}
+
+export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const [loading, setLoading] = useState(true);
   
   const [facturas, setFacturasState] = useState<Factura[]>(DEFAULT_VALUES.facturas);
@@ -80,17 +84,15 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const init = async () => {
       try {
-        const uid = await initAuth();
-        setUserId(uid);
-        await loadAllData(uid);
+        await loadAllData(userId);
       } catch (error) {
-        console.error('Error inicializando Firebase:', error);
+        console.error('Error cargando datos:', error);
       } finally {
         setLoading(false);
       }
     };
     init();
-  }, []);
+  }, [userId]);
 
   // Función para corregir integridad de facturas (recalcular abonos desde historial)
   const corregirIntegridadFacturas = (facturas: Factura[]): Factura[] => {
