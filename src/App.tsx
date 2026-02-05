@@ -6,11 +6,22 @@ import ConnectionStatus from './components/ConnectionStatus';
 import AIChatPanel from './components/AIChatPanel';
 import NegocioPage from './pages/NegocioPage';
 import FinanzasPage from './pages/FinanzasPage';
+import ResellerPortal from './pages/ResellerPortal';
+import PinLock from './components/PinLock';
 import { LoadingScreen } from './components/LoadingScreen';
+
+const ADMIN_KEY = 'seya-admin';
 
 const AppContent = () => {
   const { descargarBackup, importarBackup, loading } = useData();
   const [chatOpen, setChatOpen] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    return localStorage.getItem(ADMIN_KEY) === 'true';
+  });
+
+  if (!isUnlocked) {
+    return <PinLock onUnlock={() => setIsUnlocked(true)} />;
+  }
 
   if (loading) {
     return <LoadingScreen />;
@@ -38,9 +49,17 @@ const AppContent = () => {
 const App = () => {
   return (
     <Router>
-      <DataProvider>
-        <AppContent />
-      </DataProvider>
+      <Routes>
+        {/* Ruta pública para revendedores - sin DataProvider ni PIN */}
+        <Route path="/v/:revendedor" element={<ResellerPortal />} />
+
+        {/* Rutas protegidas con PIN y DataProvider */}
+        <Route path="/*" element={
+          <DataProvider>
+            <AppContent />
+          </DataProvider>
+        } />
+      </Routes>
     </Router>
   );
 };
