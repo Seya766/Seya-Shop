@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from '../firebase/config';
 import { Lock, Delete, ArrowRight } from 'lucide-react';
+import { LoadingScreen } from './LoadingScreen';
 
 const USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
 const PIN_KEY = 'seyaShop_pin';
@@ -92,11 +93,7 @@ const PinLock = ({ onUnlock }: PinLockProps) => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0f111a] flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   const title = isCreating
