@@ -5,13 +5,15 @@ import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from '../firebase/config';
 import type { Tenant } from '../utils/types';
 
-const TENANTS_DOC = 'config/tenants';
+// Store tenants under admin's data path (which has Firebase permissions)
+const ADMIN_USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
+const TENANTS_KEY = 'seyaShop_tenants';
 const TENANT_STORAGE_KEY = 'seya-tenant';
 
 // Default admin tenant (your original account)
 const DEFAULT_ADMIN: Tenant = {
   pin: '', // Will be set on first login
-  userId: 'T8lrzfd7vFfab9SXAgMjl1AIHv33',
+  userId: ADMIN_USER_ID,
   name: 'Admin',
   isAdmin: true,
   createdAt: '2024-01-01'
@@ -44,18 +46,18 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
           await signInAnonymously(auth);
         }
 
-        // Load tenants from Firestore
-        const tenantsRef = doc(db, TENANTS_DOC);
+        // Load tenants from Firestore (stored under admin user's data)
+        const tenantsRef = doc(db, 'users', ADMIN_USER_ID, 'data', TENANTS_KEY);
         const snap = await getDoc(tenantsRef);
 
         let loadedTenants: Tenant[] = [];
 
         if (snap.exists()) {
-          loadedTenants = snap.data().tenants || [];
+          loadedTenants = snap.data().value || [];
         } else {
           // First time: create with default admin (no PIN yet)
           loadedTenants = [DEFAULT_ADMIN];
-          await setDoc(tenantsRef, { tenants: loadedTenants });
+          await setDoc(tenantsRef, { value: loadedTenants, updatedAt: new Date().toISOString() });
         }
 
         setTenants(loadedTenants);
@@ -81,8 +83,8 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const saveTenants = async (newTenants: Tenant[]) => {
-    const tenantsRef = doc(db, TENANTS_DOC);
-    await setDoc(tenantsRef, { tenants: newTenants, updatedAt: new Date().toISOString() });
+    const tenantsRef = doc(db, 'users', ADMIN_USER_ID, 'data', TENANTS_KEY);
+    await setDoc(tenantsRef, { value: newTenants, updatedAt: new Date().toISOString() });
     setTenants(newTenants);
   };
 
