@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useTenant } from '../context/TenantContext';
-import { ArrowLeft, UserPlus, Trash2, Users, Shield, Copy, Check } from 'lucide-react';
+import { ArrowLeft, UserPlus, Trash2, Users, Shield, Copy, Check, Pencil, LogIn, X, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import type { Tenant } from '../utils/types';
 
 const AdminPanel = () => {
   const navigate = useNavigate();
-  const { currentTenant, tenants, createTenant, deleteTenant } = useTenant();
+  const { currentTenant, tenants, createTenant, deleteTenant, updateTenantPin, updateTenant, impersonateTenant } = useTenant();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -15,6 +16,13 @@ const AdminPanel = () => {
   const [success, setSuccess] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Edit modal state
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editShopName, setEditShopName] = useState('');
+  const [editPin, setEditPin] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Only admin can access
   if (!currentTenant?.isAdmin) {
@@ -82,6 +90,66 @@ const AdminPanel = () => {
     navigator.clipboard.writeText(userId);
     setCopiedId(userId);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const startEditing = (tenant: Tenant) => {
+    setEditingTenant(tenant);
+    setEditName(tenant.name);
+    setEditShopName(tenant.shopName || '');
+    setEditPin(''); // Don't show current PIN, leave empty for "no change"
+    setError('');
+  };
+
+  const cancelEditing = () => {
+    setEditingTenant(null);
+    setEditName('');
+    setEditShopName('');
+    setEditPin('');
+    setError('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTenant) return;
+    setError('');
+    setIsSaving(true);
+
+    try {
+      // Update name/shopName if changed
+      if (editName !== editingTenant.name || editShopName !== editingTenant.shopName) {
+        await updateTenant(editingTenant.userId, {
+          name: editName.trim() || editingTenant.name,
+          shopName: editShopName.trim() || editingTenant.shopName
+        });
+      }
+
+      // Update PIN if provided (not empty)
+      if (editPin.length === 4) {
+        const result = await updateTenantPin(editingTenant.userId, editPin);
+        if (!result.success) {
+          setError(result.error || 'Error al cambiar PIN');
+          setIsSaving(false);
+          return;
+        }
+      } else if (editPin.length > 0 && editPin.length < 4) {
+        setError('El PIN debe tener 4 dígitos');
+        setIsSaving(false);
+        return;
+      }
+
+      setSuccess(`Usuario "${editName}" actualizado`);
+      cancelEditing();
+    } catch {
+      setError('Error al guardar cambios');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleImpersonate = (tenant: Tenant) => {
+    if (confirm(`¿Entrar como "${tenant.name}"? Verás su dashboard.`)) {
+      impersonateTenant(tenant.userId);
+      navigate('/');
+    }
   };
 
   const nonAdminTenants = tenants.filter(t => !t.isAdmin);
@@ -255,6 +323,20 @@ const AdminPanel = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => handleImpersonate(tenant)}
+                      className="p-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400"
+                      title="Entrar como este usuario"
+                    >
+                      <LogIn size={16} />
+                    </button>
+                    <button
+                      onClick={() => startEditing(tenant)}
+                      className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400"
+                      title="Editar usuario"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
                       onClick={() => copyUserId(tenant.userId)}
                       className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400"
                       title="Copiar User ID"
@@ -283,6 +365,85 @@ const AdminPanel = () => {
           )}
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {editingTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={cancelEditing} />
+          <div className="relative bg-[#0f111a] border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Pencil size={20} className="text-blue-400" />
+                Editar Usuario
+              </h3>
+              <button onClick={cancelEditing} className="p-2 hover:bg-gray-800 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-300 text-sm">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">Nombre del usuario</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">Nombre de la tienda</label>
+              <input
+                type="text"
+                value={editShopName}
+                onChange={e => setEditShopName(e.target.value)}
+                className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">Nuevo PIN (dejar vacío para no cambiar)</label>
+              <input
+                type="text"
+                value={editPin}
+                onChange={e => setEditPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="••••"
+                maxLength={4}
+                className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 outline-none font-mono text-xl tracking-widest text-center"
+              />
+              <p className="text-xs text-gray-500 mt-1">PIN actual: {editingTenant.pin}</p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={cancelEditing}
+                className="flex-1 p-3 rounded-lg bg-gray-700 hover:bg-gray-600"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={isSaving}
+                className="flex-1 p-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 font-bold flex items-center justify-center gap-2"
+              >
+                {isSaving ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Save size={16} /> Guardar
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

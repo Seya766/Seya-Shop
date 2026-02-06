@@ -29,6 +29,9 @@ interface TenantContextType {
   createTenant: (name: string, pin: string, shopName: string) => Promise<{ success: boolean; error?: string }>;
   deleteTenant: (pin: string) => Promise<boolean>;
   updateAdminPin: (newPin: string) => Promise<boolean>;
+  updateTenantPin: (userId: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
+  updateTenant: (userId: string, updates: Partial<Pick<Tenant, 'name' | 'shopName'>>) => Promise<boolean>;
+  impersonateTenant: (userId: string) => void;
 }
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
@@ -173,6 +176,35 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     return true;
   }, [tenants, currentTenant]);
 
+  const updateTenantPin = useCallback(async (userId: string, newPin: string): Promise<{ success: boolean; error?: string }> => {
+    // Check if PIN already exists
+    if (tenants.some(t => t.pin === newPin)) {
+      return { success: false, error: 'Este PIN ya está en uso' };
+    }
+
+    const newTenants = tenants.map(t =>
+      t.userId === userId ? { ...t, pin: newPin } : t
+    );
+    await saveTenants(newTenants);
+    return { success: true };
+  }, [tenants]);
+
+  const updateTenant = useCallback(async (userId: string, updates: Partial<Pick<Tenant, 'name' | 'shopName'>>): Promise<boolean> => {
+    const newTenants = tenants.map(t =>
+      t.userId === userId ? { ...t, ...updates } : t
+    );
+    await saveTenants(newTenants);
+    return true;
+  }, [tenants]);
+
+  const impersonateTenant = useCallback((userId: string) => {
+    const tenant = tenants.find(t => t.userId === userId);
+    if (tenant) {
+      setCurrentTenant(tenant);
+      localStorage.setItem(TENANT_STORAGE_KEY, tenant.pin);
+    }
+  }, [tenants]);
+
   return (
     <TenantContext.Provider value={{
       loading,
@@ -182,7 +214,10 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       logout,
       createTenant,
       deleteTenant,
-      updateAdminPin
+      updateAdminPin,
+      updateTenantPin,
+      updateTenant,
+      impersonateTenant
     }}>
       {children}
     </TenantContext.Provider>
