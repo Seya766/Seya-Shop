@@ -11,11 +11,11 @@ import ResellerPortal from './pages/ResellerPortal';
 import AdminPanel from './pages/AdminPanel';
 import PinLock from './components/PinLock';
 import { LoadingScreen } from './components/LoadingScreen';
-import { Settings } from 'lucide-react';
+import { Settings, X, Eye } from 'lucide-react';
 
 const AppContent = () => {
   const { descargarBackup, importarBackup, loading } = useData();
-  const { currentTenant } = useTenant();
+  const { currentTenant, isImpersonating, originalTenant, stopImpersonating } = useTenant();
   const [chatOpen, setChatOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -24,7 +24,28 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f111a] text-gray-100 font-sans selection:bg-purple-500 selection:text-white">
+    <div className={`min-h-screen bg-[#0f111a] text-gray-100 font-sans selection:bg-purple-500 selection:text-white ${isImpersonating ? 'pt-10' : ''}`}>
+      {/* Impersonation Banner */}
+      {isImpersonating && originalTenant && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2">
+            <Eye size={16} />
+            <span className="text-sm font-medium">
+              Viendo como: <strong>{currentTenant?.name}</strong> ({currentTenant?.shopName})
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              stopImpersonating();
+              navigate('/admin');
+            }}
+            className="flex items-center gap-1 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+          >
+            <X size={14} />
+            Salir
+          </button>
+        </div>
+      )}
       <Navbar
         onBackup={descargarBackup}
         onRestore={importarBackup}

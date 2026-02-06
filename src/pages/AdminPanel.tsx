@@ -6,7 +6,7 @@ import type { Tenant } from '../utils/types';
 
 const AdminPanel = () => {
   const navigate = useNavigate();
-  const { currentTenant, tenants, createTenant, deleteTenant, updateTenantPin, updateTenant, impersonateTenant } = useTenant();
+  const { currentTenant, tenants, createTenant, deleteTenant, updateTenantPin, updateTenant, impersonateTenant, isImpersonating, originalTenant, stopImpersonating } = useTenant();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -24,8 +24,15 @@ const AdminPanel = () => {
   const [editPin, setEditPin] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Only admin can access
-  if (!currentTenant?.isAdmin) {
+  // Only admin can access (or admin impersonating someone)
+  const isAdminOrImpersonating = currentTenant?.isAdmin || (isImpersonating && originalTenant?.isAdmin);
+
+  // If impersonating, stop and show admin panel
+  if (isImpersonating && originalTenant?.isAdmin) {
+    stopImpersonating();
+  }
+
+  if (!isAdminOrImpersonating) {
     return (
       <div className="min-h-screen bg-[#0f111a] flex items-center justify-center p-4">
         <div className="text-center">

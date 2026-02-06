@@ -24,6 +24,8 @@ interface TenantContextType {
   loading: boolean;
   currentTenant: Tenant | null;
   tenants: Tenant[];
+  isImpersonating: boolean;
+  originalTenant: Tenant | null;
   login: (pin: string) => Promise<boolean>;
   logout: () => void;
   createTenant: (name: string, pin: string, shopName: string) => Promise<{ success: boolean; error?: string }>;
@@ -32,6 +34,7 @@ interface TenantContextType {
   updateTenantPin: (userId: string, newPin: string) => Promise<{ success: boolean; error?: string }>;
   updateTenant: (userId: string, updates: Partial<Pick<Tenant, 'name' | 'shopName'>>) => Promise<boolean>;
   impersonateTenant: (userId: string) => void;
+  stopImpersonating: () => void;
 }
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
@@ -40,6 +43,8 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [originalTenant, setOriginalTenant] = useState<Tenant | null>(null);
 
   // Initialize Firebase auth and load tenants
   useEffect(() => {
@@ -199,17 +204,30 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
 
   const impersonateTenant = useCallback((userId: string) => {
     const tenant = tenants.find(t => t.userId === userId);
-    if (tenant) {
+    if (tenant && currentTenant) {
+      // Save original tenant for returning later
+      setOriginalTenant(currentTenant);
+      setIsImpersonating(true);
       setCurrentTenant(tenant);
-      localStorage.setItem(TENANT_STORAGE_KEY, tenant.pin);
+      // Don't save to localStorage - we want to restore on page refresh
     }
-  }, [tenants]);
+  }, [tenants, currentTenant]);
+
+  const stopImpersonating = useCallback(() => {
+    if (originalTenant) {
+      setCurrentTenant(originalTenant);
+      setIsImpersonating(false);
+      setOriginalTenant(null);
+    }
+  }, [originalTenant]);
 
   return (
     <TenantContext.Provider value={{
       loading,
       currentTenant,
       tenants,
+      isImpersonating,
+      originalTenant,
       login,
       logout,
       createTenant,
@@ -217,7 +235,8 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       updateAdminPin,
       updateTenantPin,
       updateTenant,
-      impersonateTenant
+      impersonateTenant,
+      stopImpersonating
     }}>
       {children}
     </TenantContext.Provider>
