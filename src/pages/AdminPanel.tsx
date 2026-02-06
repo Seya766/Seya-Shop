@@ -9,6 +9,7 @@ const AdminPanel = () => {
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newShopName, setNewShopName] = useState('');
   const [newPin, setNewPin] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -42,18 +43,23 @@ const AdminPanel = () => {
       setError('Ingresa un nombre');
       return;
     }
+    if (!newShopName.trim()) {
+      setError('Ingresa un nombre de tienda');
+      return;
+    }
     if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
       setError('El PIN debe tener 4 dígitos');
       return;
     }
 
     setIsCreating(true);
-    const result = await createTenant(newName.trim(), newPin);
+    const result = await createTenant(newName.trim(), newPin, newShopName.trim());
     setIsCreating(false);
 
     if (result.success) {
-      setSuccess(`Usuario "${newName}" creado con PIN: ${newPin}`);
+      setSuccess(`Usuario "${newName}" (${newShopName}) creado con PIN: ${newPin}`);
       setNewName('');
+      setNewShopName('');
       setNewPin('');
       setShowCreateForm(false);
     } else {
@@ -131,12 +137,23 @@ const AdminPanel = () => {
             </h3>
 
             <div>
-              <label className="text-sm text-gray-400 block mb-1">Nombre</label>
+              <label className="text-sm text-gray-400 block mb-1">Nombre del usuario</label>
               <input
                 type="text"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
                 placeholder="Ej: Juan"
+                className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-400 block mb-1">Nombre de la tienda</label>
+              <input
+                type="text"
+                value={newShopName}
+                onChange={e => setNewShopName(e.target.value)}
+                placeholder="Ej: Adri Telecom"
                 className="w-full p-3 rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none"
               />
             </div>
@@ -158,6 +175,7 @@ const AdminPanel = () => {
                 onClick={() => {
                   setShowCreateForm(false);
                   setNewName('');
+                  setNewShopName('');
                   setNewPin('');
                   setError('');
                 }}
@@ -196,7 +214,8 @@ const AdminPanel = () => {
                       {tenant.name}
                       <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-300">Admin</span>
                     </h4>
-                    <p className="text-sm text-gray-500">PIN: {tenant.pin ? '••••' : '(sin PIN)'}</p>
+                    <p className="text-sm text-cyan-400">{tenant.shopName || 'Sin nombre de tienda'}</p>
+                    <p className="text-xs text-gray-500">PIN: {tenant.pin ? '••••' : '(sin PIN)'}</p>
                   </div>
                 </div>
                 <button
@@ -230,7 +249,8 @@ const AdminPanel = () => {
                     </div>
                     <div>
                       <h4 className="font-bold">{tenant.name}</h4>
-                      <p className="text-sm text-gray-500">PIN: {tenant.pin}</p>
+                      <p className="text-sm text-cyan-400">{tenant.shopName || 'Sin nombre de tienda'}</p>
+                      <p className="text-xs text-gray-500">PIN: {tenant.pin}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

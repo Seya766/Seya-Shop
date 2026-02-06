@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Zap, Store, Wallet, Bot, Settings, Download, Upload, X } from 'lucide-react';
+import { Zap, Store, Wallet, Bot, Settings, Download, Upload, X, User } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { useTenant } from '../context/TenantContext';
 
 interface NavbarProps {
   onBackup: () => void;
@@ -12,12 +13,16 @@ interface NavbarProps {
 
 const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: NavbarProps) => {
   const location = useLocation();
+  const { currentTenant } = useTenant();
   const [mostrarMenu, setMostrarMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isNegocio = location.pathname === '/' || location.pathname === '/negocio';
   const isFinanzas = location.pathname === '/finanzas';
+
+  const shopName = currentTenant?.shopName || 'Seya Shop';
+  const userName = currentTenant?.name || 'Usuario';
 
   // Cerrar menú al hacer click fuera
   useEffect(() => {
@@ -66,8 +71,10 @@ const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: Navba
               <Zap className="text-white w-5 h-5 fill-current" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white leading-none">Seya Shop</h1>
-              <span className="text-[10px] text-purple-400 font-medium tracking-widest uppercase">Unlimited</span>
+              <h1 className="text-lg font-bold tracking-tight text-white leading-none">{shopName}</h1>
+              <span className="text-[10px] text-purple-400 font-medium tracking-wide flex items-center gap-1">
+                <User size={10} /> {userName}
+              </span>
             </div>
           </div>
 
@@ -195,7 +202,7 @@ const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: Navba
             {/* Footer */}
             <div className="p-3 border-t border-gray-700/50 bg-black/20">
               <p className="text-[10px] text-gray-600 text-center">
-                Seya Shop v2.0 • Powered by Claude
+                {shopName} • Powered by Claude
               </p>
             </div>
           </div>

@@ -215,6 +215,7 @@ export interface Tenant {
   pin: string;
   userId: string;
   name: string;
+  shopName: string; // Nombre de la tienda (ej: "Seya Shop", "Adri Telecom")
   isAdmin: boolean;
   createdAt: string;
 }

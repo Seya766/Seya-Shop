@@ -15,6 +15,7 @@ const DEFAULT_ADMIN: Tenant = {
   pin: '', // Will be set on first login
   userId: ADMIN_USER_ID,
   name: 'Admin',
+  shopName: 'Seya Shop',
   isAdmin: true,
   createdAt: '2024-01-01'
 };
@@ -25,7 +26,7 @@ interface TenantContextType {
   tenants: Tenant[];
   login: (pin: string) => Promise<boolean>;
   logout: () => void;
-  createTenant: (name: string, pin: string) => Promise<{ success: boolean; error?: string }>;
+  createTenant: (name: string, pin: string, shopName: string) => Promise<{ success: boolean; error?: string }>;
   deleteTenant: (pin: string) => Promise<boolean>;
   updateAdminPin: (newPin: string) => Promise<boolean>;
 }
@@ -115,7 +116,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem(TENANT_STORAGE_KEY);
   }, []);
 
-  const createTenant = useCallback(async (name: string, pin: string): Promise<{ success: boolean; error?: string }> => {
+  const createTenant = useCallback(async (name: string, pin: string, shopName: string): Promise<{ success: boolean; error?: string }> => {
     // Check if PIN already exists
     if (tenants.some(t => t.pin === pin)) {
       return { success: false, error: 'Este PIN ya está en uso' };
@@ -128,6 +129,7 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
       pin,
       userId: newUserId,
       name,
+      shopName,
       isAdmin: false,
       createdAt: new Date().toISOString()
     };
