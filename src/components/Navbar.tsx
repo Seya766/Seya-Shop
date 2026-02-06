@@ -199,12 +199,6 @@ const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: Navba
               </button>
             </div>
 
-            {/* Footer */}
-            <div className="p-3 border-t border-gray-700/50 bg-black/20">
-              <p className="text-[10px] text-gray-600 text-center">
-                {shopName} • Powered by Claude
-              </p>
-            </div>
           </div>
         </div>
       )}

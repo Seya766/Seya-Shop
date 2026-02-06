@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Trash2, ArrowDown, Bot, User, AlertCircle, FileText, DollarSign, X, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../context/DataContext';
+import { useTenant } from '../context/TenantContext';
 import { formatearDineroCorto, getColombiaISO, getColombiaDateOnly, obtenerHoraColombiana } from '../utils/helpers';
 import type { Factura, Transaccion, CategoriaGasto, GastoFijo } from '../utils/types';
 
@@ -362,6 +363,7 @@ const AI_TOOLS = [
 
 const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
   const { facturas, setFacturas, gastosFijos, setGastosFijos, transacciones, setTransacciones, presupuestoMensual, facturasOcultas, metasFinancieras, metaAhorro, pagosRevendedores } = useData();
+  const { currentTenant } = useTenant();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
       const saved = localStorage.getItem(CHAT_STORAGE_KEY);
@@ -421,6 +423,11 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
 
     // Build structured data object
     const data = {
+      usuario_actual: {
+        nombre: currentTenant?.name || 'Usuario',
+        tienda: currentTenant?.shopName || 'Seya Shop',
+        es_admin: currentTenant?.isAdmin || false,
+      },
       fecha_hoy: hoy,
       hora_actual: horaExacta,
       resumen: {
@@ -546,9 +553,12 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
       })),
     };
 
-    return `Eres Seya AI. Hoy es ${hoy}, son las ${horaExacta}.
+    const shopName = currentTenant?.shopName || 'Seya Shop';
+    const userName = currentTenant?.name || 'Usuario';
 
-QUIÉN ERES: Sos el asistente inteligente integrado en Seya Shop, la app de gestión de negocio del usuario. No sos un chatbot externo — sos parte de la app. Tenés acceso directo a todos los datos en tiempo real. Hablá como un socio de confianza que conoce el negocio por dentro.
+    return `Eres el asistente de ${shopName}. Hoy es ${hoy}, son las ${horaExacta}. Estás hablando con ${userName}.
+
+QUIÉN ERES: Sos el asistente inteligente integrado en ${shopName}, la app de gestión de negocio de ${userName}. No sos un chatbot externo — sos parte de la app. Tenés acceso directo a todos los datos en tiempo real. Hablá como un socio de confianza que conoce el negocio por dentro.
 
 EL NEGOCIO: El usuario vende servicios de telecomunicaciones en Colombia a través de revendedores. Usa esta app para:
 - NEGOCIO: crear facturas, pagar proveedores, cobrar clientes, registrar abonos parciales, manejar garantías (30 días), gestionar revendedores, ver estadísticas y ranking de servicios
@@ -595,7 +605,7 @@ CÓMO RESPONDER:
 - Usá markdown para formatear: **negrita**, listas con -, encabezados con ##
 - Respuestas concisas pero completas. No repitas los datos en tablas enormes a menos que te lo pidan
 - NUNCA digas que podés hacer algo que no está en tus herramientas. Si no podés, decilo honestamente`;
-  }, [facturasVisibles, gastosFijos, transacciones, presupuestoMensual, metasFinancieras, metaAhorro, pagosRevendedores, montoPorCobrar]);
+  }, [facturasVisibles, gastosFijos, transacciones, presupuestoMensual, metasFinancieras, metaAhorro, pagosRevendedores, montoPorCobrar, currentTenant]);
 
   // Auto-scroll
   const scrollToBottom = useCallback(() => {

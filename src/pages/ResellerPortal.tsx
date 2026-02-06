@@ -82,7 +82,7 @@ const ResellerPortal = () => {
   }, [name, tenantId]);
 
   const pendientes = facturas
-    .filter(f => !f.cobradoACliente)
+    .filter(f => f.pagadoAProveedor && !f.cobradoACliente)
     .map(f => ({ ...f, saldo: (f.cobroCliente || 0) - (f.abono || 0) }))
     .sort((a, b) => new Date(b.fechaISO || '').getTime() - new Date(a.fechaISO || '').getTime());
 
