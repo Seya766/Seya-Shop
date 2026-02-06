@@ -3201,11 +3201,11 @@ const NegocioPage = () => {
         </AnimatePresence>
 
         {/* Main Content */}
-        <main className="relative max-w-6xl mx-auto px-4 py-8 pb-24 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Columna Izquierda - Formulario */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-24">
-              <SimpleCard className="relative bg-gradient-to-br from-[#1a1f33] via-[#151929] to-[#0f1219] rounded-2xl p-6 border border-gray-800/50 shadow-2xl overflow-hidden">
+        <main className="relative max-w-6xl mx-auto px-3 sm:px-4 py-6 pb-24 grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          {/* Columna Izquierda - Formulario (order-2 en mobile para que stats aparezcan primero) */}
+          <div className="lg:col-span-1 order-2 lg:order-1">
+            <div className="lg:sticky lg:top-24">
+              <SimpleCard className="relative bg-gradient-to-br from-[#1a1f33] via-[#151929] to-[#0f1219] rounded-2xl p-4 sm:p-6 border border-gray-800/50 shadow-2xl overflow-hidden">
                 <div className="absolute -top-20 -right-20 w-40 h-40 bg-purple-500/10 rounded-full blur-[60px]" />
                 
                 <div className="relative">
@@ -3321,11 +3321,11 @@ const NegocioPage = () => {
             </div>
           </div>
 
-          {/* Columna Derecha - Lista */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* Columna Derecha - Lista (order-1 en mobile para que aparezca primero) */}
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6 order-1 lg:order-2">
             {/* Stats Header */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <SimpleCard className="group relative bg-gradient-to-br from-orange-900/40 via-orange-900/20 to-transparent p-5 rounded-xl border border-orange-500/30 overflow-hidden">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+              <SimpleCard className="col-span-2 sm:col-span-1 group relative bg-gradient-to-br from-orange-900/40 via-orange-900/20 to-transparent p-4 sm:p-5 rounded-xl border border-orange-500/30 overflow-hidden">
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="p-2 bg-orange-500/20 rounded-xl">
@@ -3333,68 +3333,68 @@ const NegocioPage = () => {
                     </div>
                     <p className="text-orange-400/80 text-xs font-bold uppercase">Por Cobrar</p>
                   </div>
-                  <p className="text-3xl font-mono font-bold text-orange-400">{formatearDinero(dineroPendienteCobro)}</p>
+                  <p className="text-2xl sm:text-3xl font-mono font-bold text-orange-400">{formatearDinero(dineroPendienteCobro)}</p>
                 </div>
               </SimpleCard>
-              
-              <MagneticButton 
-                onClick={() => setVistaRevendedores(true)} 
-                className="group relative bg-gradient-to-br from-purple-900/40 via-purple-900/20 to-transparent border border-purple-500/30 text-white p-5 rounded-xl flex items-center gap-4 overflow-hidden text-left"
+
+              <MagneticButton
+                onClick={() => setVistaRevendedores(true)}
+                className="group relative bg-gradient-to-br from-purple-900/40 via-purple-900/20 to-transparent border border-purple-500/30 text-white p-3 sm:p-5 rounded-xl flex items-center gap-2 sm:gap-4 overflow-hidden text-left"
               >
-                <div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl shadow-lg">
-                  <Users className="text-white" size={20} />
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl shadow-lg">
+                  <Users className="text-white" size={18} />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-purple-400/80">Ver Cuentas</p>
-                  <p className="font-bold text-lg">Revendedores</p>
+                  <p className="text-[9px] sm:text-[10px] uppercase font-bold text-purple-400/80">Ver Cuentas</p>
+                  <p className="font-bold text-sm sm:text-lg">Revendedores</p>
                 </div>
               </MagneticButton>
-              
-              <MagneticButton 
-                onClick={() => setVistaEstadisticas(true)} 
-                className="group relative bg-gradient-to-br from-emerald-900/40 via-emerald-900/20 to-transparent border border-emerald-500/30 text-white p-5 rounded-xl flex items-center gap-4 overflow-hidden text-left"
+
+              <MagneticButton
+                onClick={() => setVistaEstadisticas(true)}
+                className="group relative bg-gradient-to-br from-emerald-900/40 via-emerald-900/20 to-transparent border border-emerald-500/30 text-white p-3 sm:p-5 rounded-xl flex items-center gap-2 sm:gap-4 overflow-hidden text-left"
               >
-                <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg">
-                  <BarChart3 className="text-white" size={20} />
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg">
+                  <BarChart3 className="text-white" size={18} />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-emerald-400/80">Ver Análisis</p>
-                  <p className="font-bold text-lg">Estadísticas</p>
+                  <p className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-400/80">Ver Análisis</p>
+                  <p className="font-bold text-sm sm:text-lg">Estadísticas</p>
                 </div>
               </MagneticButton>
             </div>
 
             {/* Mini Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <SimpleCard className="group relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-5 rounded-xl border border-gray-800/50 hover:border-emerald-500/30 transition-colors overflow-hidden">
-                <div className="flex items-center gap-4">
-                  <button 
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <SimpleCard className="group relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 sm:p-5 rounded-xl border border-gray-800/50 hover:border-emerald-500/30 transition-colors overflow-hidden">
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <button
                     onClick={abrirDesgloseGanancia}
-                    className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                    className="p-2 sm:p-3 bg-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/30 transition-colors flex-shrink-0"
                     title="Ver desglose de ganancias"
                   >
-                    <TrendingUp size={20} />
+                    <TrendingUp size={18} />
                   </button>
-                  <button 
+                  <button
                     onClick={abrirDesgloseGanancia}
-                    className="flex-1 text-left hover:opacity-80 transition-opacity"
+                    className="flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
                     title="Ver desglose de ganancias"
                   >
-                    <p className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
-                      Ganancia Hoy
+                    <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1 flex-wrap">
+                      <span>Ganancia Hoy</span>
                       {desgloseGananciaDiaria.length > 0 && (
-                        <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded text-[8px]">
+                        <span className="bg-emerald-500/20 text-emerald-400 px-1 sm:px-1.5 py-0.5 rounded text-[7px] sm:text-[8px]">
                           {desgloseGananciaDiaria.length} cobros
                         </span>
                       )}
                     </p>
-                    <p className="text-white font-mono font-bold text-xl">{formatearDinero(gananciaDiaria)}</p>
+                    <p className="text-white font-mono font-bold text-base sm:text-xl truncate">{formatearDinero(gananciaDiaria)}</p>
                   </button>
-                  <div className="relative">
-                    <input 
-                      type="date" 
-                      value={diaEstadistica} 
-                      onChange={e => {setDiaEstadistica(e.target.value); setMesEstadistica(e.target.value.slice(0, 7));}} 
+                  <div className="relative flex-shrink-0 hidden sm:block">
+                    <input
+                      type="date"
+                      value={diaEstadistica}
+                      onChange={e => {setDiaEstadistica(e.target.value); setMesEstadistica(e.target.value.slice(0, 7));}}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                     <div className="p-2 bg-gray-800/50 hover:bg-gray-700/50 rounded-xl transition-colors border border-gray-700/50 hover:border-gray-600 pointer-events-none">
@@ -3403,16 +3403,16 @@ const NegocioPage = () => {
                   </div>
                 </div>
               </SimpleCard>
-              
-              <div className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-5 rounded-xl border border-gray-800/50 flex items-center gap-4 overflow-hidden">
-                <div className="p-3 bg-purple-500/20 rounded-xl text-purple-400">
-                  <Calendar size={20} />
+
+              <div className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 sm:p-5 rounded-xl border border-gray-800/50 flex items-center gap-2 sm:gap-4 overflow-hidden">
+                <div className="p-2 sm:p-3 bg-purple-500/20 rounded-xl text-purple-400 flex-shrink-0">
+                  <Calendar size={18} />
                 </div>
-                <div className="flex-1">
-                  <p className="text-[10px] text-gray-500 uppercase font-bold">Ganancia Mes</p>
-                  <p className="text-white font-mono font-bold text-xl">{formatearDinero(gananciaNetaMensual)}</p>
-                  <div className="w-full bg-gray-800 h-2 rounded-full mt-2 overflow-hidden">
-                    <div 
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold">Ganancia Mes</p>
+                  <p className="text-white font-mono font-bold text-base sm:text-xl truncate">{formatearDinero(gananciaNetaMensual)}</p>
+                  <div className="w-full bg-gray-800 h-1.5 sm:h-2 rounded-full mt-1.5 sm:mt-2 overflow-hidden">
+                    <div
                       className="bg-gradient-to-r from-purple-500 via-fuchsia-500 to-emerald-400 h-full rounded-full transition-all duration-500"
                       style={{ width: `${porcentajeMeta}%` }}
                     />
@@ -3422,43 +3422,47 @@ const NegocioPage = () => {
             </div>
 
             {/* Filtros */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 rounded-xl border border-gray-800/50">
-              <div className="flex bg-[#0a0d14] rounded-xl p-1 w-full sm:w-auto overflow-x-auto">
+            <div className="flex flex-col gap-3 bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-2 sm:p-3 rounded-xl border border-gray-800/50">
+              {/* Tabs - scroll horizontal en móvil */}
+              <div className="flex bg-[#0a0d14] rounded-xl p-1 overflow-x-auto scrollbar-hide">
                 {[
-                  { id: 'porPagar', label: 'Por Pagar', icon: ClipboardList },
-                  { id: 'porCobrar', label: 'Por Cobrar', icon: AlertTriangle },
-                  { id: 'finalizados', label: 'Finalizados', icon: Check },
-                  { id: 'garantias', label: 'Garantías', icon: RefreshCw },
-                  { id: 'ocultas', label: `Ocultas (${cantidadOcultas})`, icon: EyeOff }
+                  { id: 'porPagar', label: 'Por Pagar', shortLabel: 'Pagar', icon: ClipboardList },
+                  { id: 'porCobrar', label: 'Por Cobrar', shortLabel: 'Cobrar', icon: AlertTriangle },
+                  { id: 'finalizados', label: 'Final', shortLabel: 'Final', icon: Check },
+                  { id: 'garantias', label: 'Garantías', shortLabel: 'Gar.', icon: RefreshCw },
+                  { id: 'ocultas', label: `Ocultas`, shortLabel: `(${cantidadOcultas})`, icon: EyeOff }
                 ].map((tab) => (
-                  <button 
+                  <button
                     key={tab.id}
                     onClick={() => {
                       setFiltro(tab.id);
                       if (tab.id === 'ocultas') setMostrarOcultas(true);
                       else setMostrarOcultas(false);
-                    }} 
-                    className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold uppercase flex items-center gap-2 transition-colors ${
-                      filtro === tab.id 
-                        ? tab.id === 'porPagar' ? 'bg-gray-700 text-white' 
-                          : tab.id === 'porCobrar' ? 'bg-orange-500/30 text-orange-300' 
+                    }}
+                    className={`flex-1 min-w-fit px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase flex items-center justify-center gap-1 sm:gap-2 transition-colors whitespace-nowrap ${
+                      filtro === tab.id
+                        ? tab.id === 'porPagar' ? 'bg-gray-700 text-white'
+                          : tab.id === 'porCobrar' ? 'bg-orange-500/30 text-orange-300'
                           : tab.id === 'finalizados' ? 'bg-emerald-500/30 text-emerald-300'
                           : tab.id === 'garantias' ? 'bg-red-500/30 text-red-300'
                           : 'bg-gray-600/30 text-gray-300'
                         : 'text-gray-500 hover:text-white'
                     }`}
                   >
-                    <tab.icon size={14}/> <span className="hidden sm:inline">{tab.label}</span>
+                    <tab.icon size={12} className="sm:w-[14px] sm:h-[14px]"/>
+                    <span className="sm:hidden">{tab.shortLabel}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2 w-full sm:w-auto">
+              {/* Búsqueda y ordenamiento */}
+              <div className="flex gap-2">
                 {/* Selector de ordenamiento */}
-                <div className="relative">
+                <div className="relative flex-shrink-0">
                   <select
                     value={ordenFacturas}
                     onChange={(e) => setOrdenFacturas(e.target.value as any)}
-                    className="appearance-none bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2.5 pl-9 pr-8 text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none cursor-pointer"
+                    className="appearance-none bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2 sm:py-2.5 pl-8 sm:pl-9 pr-6 sm:pr-8 text-xs sm:text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none cursor-pointer"
                   >
                     <option value="reciente">Más reciente</option>
                     <option value="antiguo">Más antiguo</option>
@@ -3466,18 +3470,18 @@ const NegocioPage = () => {
                     <option value="revendedor">Por revendedor</option>
                     <option value="monto">Por monto</option>
                   </select>
-                  <ArrowUpDown className="absolute left-3 top-3 text-gray-600 w-4 h-4 pointer-events-none" />
-                  <ChevronDown className="absolute right-2 top-3 text-gray-600 w-4 h-4 pointer-events-none" />
+                  <ArrowUpDown className="absolute left-2.5 sm:left-3 top-2.5 sm:top-3 text-gray-600 w-3.5 h-3.5 sm:w-4 sm:h-4 pointer-events-none" />
+                  <ChevronDown className="absolute right-1.5 sm:right-2 top-2.5 sm:top-3 text-gray-600 w-3.5 h-3.5 sm:w-4 sm:h-4 pointer-events-none" />
                 </div>
                 {/* Búsqueda */}
-                <div className="relative flex-1 sm:w-48">
-                  <Search className="absolute left-3 top-3 text-gray-600 w-4 h-4" />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar..." 
-                    className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none" 
-                    value={busqueda} 
-                    onChange={e => setBusqueda(e.target.value)} 
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 sm:left-3 top-2.5 sm:top-3 text-gray-600 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <input
+                    type="text"
+                    placeholder="Buscar..."
+                    className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2 sm:py-2.5 pl-8 sm:pl-10 pr-3 sm:pr-4 text-xs sm:text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none"
+                    value={busqueda}
+                    onChange={e => setBusqueda(e.target.value)}
                   />
                 </div>
               </div>

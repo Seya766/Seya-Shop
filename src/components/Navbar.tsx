@@ -64,53 +64,53 @@ const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: Navba
       />
 
       <nav className="bg-[#161b2c]/80 backdrop-blur-xl border-b border-gray-800/50 sticky top-0 z-[100] shadow-lg shadow-black/20">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-2 sm:px-4 h-14 sm:h-16 flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-purple-600 to-indigo-600 p-2 rounded-xl shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 transition-shadow">
-              <Zap className="text-white w-5 h-5 fill-current" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="bg-gradient-to-tr from-purple-600 to-indigo-600 p-1.5 sm:p-2 rounded-lg sm:rounded-xl shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 transition-shadow">
+              <Zap className="text-white w-4 h-4 sm:w-5 sm:h-5 fill-current" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white leading-none">{shopName}</h1>
-              <span className="text-[10px] text-purple-400 font-medium tracking-wide flex items-center gap-1">
-                <User size={10} /> {userName}
+              <h1 className="text-sm sm:text-lg font-bold tracking-tight text-white leading-none truncate max-w-[100px] sm:max-w-none">{shopName}</h1>
+              <span className="text-[9px] sm:text-[10px] text-purple-400 font-medium tracking-wide flex items-center gap-1">
+                <User size={9} className="sm:w-[10px] sm:h-[10px]" /> {userName}
               </span>
             </div>
           </div>
 
           {/* Toggle de Navegación */}
-          <div className="flex items-center gap-1 bg-[#0f111a]/80 backdrop-blur p-1 rounded-xl border border-gray-700/50">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-[#0f111a]/80 backdrop-blur p-0.5 sm:p-1 rounded-lg sm:rounded-xl border border-gray-700/50">
             <Link
               to="/"
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                isNegocio 
-                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/25' 
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                isNegocio
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               }`}
             >
-              <Store size={16} />
+              <Store size={14} className="sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Negocio</span>
             </Link>
             <Link
               to="/finanzas"
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-xs sm:text-sm font-medium transition-all ${
                 isFinanzas
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/25'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               }`}
             >
-              <Wallet size={16} />
+              <Wallet size={14} className="sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">Finanzas</span>
             </Link>
             <button
               onClick={onToggleChat}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-md sm:rounded-lg text-xs sm:text-sm font-medium transition-all ${
                 chatOpen
                   ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-500/25'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               }`}
             >
-              <Bot size={16} />
+              <Bot size={14} className="sm:w-4 sm:h-4" />
               <span className="hidden sm:inline">IA</span>
             </button>
           </div>
@@ -122,15 +122,15 @@ const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: Navba
             
             {/* Menú de configuración */}
             <div className="relative">
-              <button 
-                onClick={() => setMostrarMenu(!mostrarMenu)} 
-                className={`p-2.5 rounded-xl border transition-all ${
-                  mostrarMenu 
-                    ? 'bg-purple-600 border-purple-500 text-white shadow-lg shadow-purple-500/25' 
+              <button
+                onClick={() => setMostrarMenu(!mostrarMenu)}
+                className={`p-2 sm:p-2.5 rounded-lg sm:rounded-xl border transition-all ${
+                  mostrarMenu
+                    ? 'bg-purple-600 border-purple-500 text-white shadow-lg shadow-purple-500/25'
                     : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700/50'
                 }`}
               >
-                <Settings size={18} className={mostrarMenu ? 'animate-spin' : ''} style={{ animationDuration: '3s' }} />
+                <Settings size={16} className={`sm:w-[18px] sm:h-[18px] ${mostrarMenu ? 'animate-spin' : ''}`} style={{ animationDuration: '3s' }} />
               </button>
             </div>
           </div>
