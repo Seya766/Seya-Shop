@@ -94,7 +94,7 @@ const AuthenticatedApp = () => {
   }
 
   return (
-    <DataProvider userId={tenant.userId}>
+    <DataProvider key={tenant.userId} userId={tenant.userId}>
       <Routes>
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/*" element={<AppContent />} />
