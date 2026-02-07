@@ -557,6 +557,9 @@ const NegocioPage = () => {
   // Referencia para rastrear el día del sistema (no la selección del usuario)
   const ultimoDiaSistema = useRef(getColombiaDateOnly());
 
+  // Referencia para rastrear qué campo editó el usuario (porcentaje o cobro)
+  const ultimoCampoEditado = useRef<'porcentaje' | 'cobro' | null>(null);
+
   // Efecto para actualizar automáticamente solo cuando cambia el día del SISTEMA (medianoche)
   useEffect(() => {
     const verificarCambioDia = () => {
@@ -661,17 +664,40 @@ const NegocioPage = () => {
   // =============================================
   // EFECTOS (optimizados)
   // =============================================
+  // Calcular cobro cuando cambia monto o porcentaje
   useEffect(() => {
+    if (ultimoCampoEditado.current === 'cobro') return; // No recalcular si el usuario editó el cobro
+
     if (form.montoFactura && form.porcentajeCobro) {
       const montoStr = String(form.montoFactura).replace(/[^0-9]/g, '');
       const monto = parseFloat(montoStr);
       const porcent = parseFloat(String(form.porcentajeCobro));
-      if (!isNaN(monto) && !isNaN(porcent)) {
+      if (!isNaN(monto) && !isNaN(porcent) && monto > 0) {
         const calculo = Math.round(monto * (porcent / 100));
         setForm(prev => ({ ...prev, cobroCliente: String(calculo) }));
       }
     }
   }, [form.montoFactura, form.porcentajeCobro]);
+
+  // Calcular porcentaje cuando el usuario edita el cobro manualmente
+  useEffect(() => {
+    if (ultimoCampoEditado.current !== 'cobro') return; // Solo ejecutar si el usuario editó el cobro
+
+    if (form.montoFactura && form.cobroCliente) {
+      const montoStr = String(form.montoFactura).replace(/[^0-9]/g, '');
+      const cobroStr = String(form.cobroCliente).replace(/[^0-9]/g, '');
+      const monto = parseFloat(montoStr);
+      const cobro = parseFloat(cobroStr);
+      if (!isNaN(monto) && !isNaN(cobro) && monto > 0) {
+        const porcentajeCalculado = Math.round((cobro / monto) * 100);
+        if (porcentajeCalculado !== form.porcentajeCobro) {
+          setForm(prev => ({ ...prev, porcentajeCobro: porcentajeCalculado }));
+        }
+      }
+    }
+    // Resetear después de calcular
+    ultimoCampoEditado.current = null;
+  }, [form.cobroCliente]);
 
   // =============================================
   // HELPERS LOCALES (memoizados)
@@ -3384,22 +3410,28 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
                           <label className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
                             <Percent size={10} /> Cobras
                           </label>
-                          <input 
-                            type="number" 
-                            className="w-full bg-[#1a1f33] border border-purple-500/30 rounded-xl p-3.5 text-white text-center font-bold focus:border-purple-500/60 transition-colors outline-none" 
-                            value={form.porcentajeCobro} 
-                            onChange={e => setForm({...form, porcentajeCobro: Number(e.target.value)})} 
+                          <input
+                            type="number"
+                            className="w-full bg-[#1a1f33] border border-purple-500/30 rounded-xl p-3.5 text-white text-center font-bold focus:border-purple-500/60 transition-colors outline-none"
+                            value={form.porcentajeCobro}
+                            onChange={e => {
+                              ultimoCampoEditado.current = 'porcentaje';
+                              setForm({...form, porcentajeCobro: Number(e.target.value)});
+                            }}
                           />
                         </div>
                         <div className="w-2/3 space-y-1.5">
                           <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Total Cobrar</label>
                           <div className="relative">
                             <span className="absolute left-4 top-3.5 text-emerald-500 font-medium">$</span>
-                            <input 
-                              type="tel" 
-                              className="w-full bg-[#1a1f33] border border-emerald-500/30 rounded-xl p-3.5 pl-8 text-emerald-400 font-bold font-mono focus:border-emerald-500/60 transition-colors outline-none" 
-                              value={form.cobroCliente} 
-                              onChange={(e) => handleMoneyInput(e, 'cobroCliente')} 
+                            <input
+                              type="tel"
+                              className="w-full bg-[#1a1f33] border border-emerald-500/30 rounded-xl p-3.5 pl-8 text-emerald-400 font-bold font-mono focus:border-emerald-500/60 transition-colors outline-none"
+                              value={form.cobroCliente}
+                              onChange={(e) => {
+                                ultimoCampoEditado.current = 'cobro';
+                                handleMoneyInput(e, 'cobroCliente');
+                              }}
                             />
                           </div>
                         </div>
