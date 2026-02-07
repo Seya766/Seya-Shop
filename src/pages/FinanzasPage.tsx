@@ -2410,22 +2410,101 @@ const FinanzasPage = () => {
                     // Usar la función de cálculo con migración
                     const { saldoTotal, rendimientoMensualTotal, totalAportado, totalRendimientos, totalRetirado, metaMigrada } = calcularTotalesMeta(metaOriginal);
                     const meta = metaMigrada;
-                    
+
                     const progreso = (saldoTotal / meta.montoObjetivo) * 100;
                     const faltante = meta.montoObjetivo - saldoTotal;
-                    
-                    // Calcular meses restantes
-                    let mesesRestantes = Infinity;
-                    if (meta.aporteMensualPlaneado > 0 || rendimientoMensualTotal > 0) {
-                      const aporteTotal = meta.aporteMensualPlaneado + rendimientoMensualTotal;
-                      mesesRestantes = Math.ceil(faltante / aporteTotal);
+
+                    // Calcular meses restantes con el ritmo actual
+                    const aporteActualMensual = meta.aporteMensualPlaneado + rendimientoMensualTotal;
+                    let mesesRestantesRitmoActual = Infinity;
+                    if (aporteActualMensual > 0) {
+                      mesesRestantesRitmoActual = Math.ceil(faltante / aporteActualMensual);
                     }
-                    
-                    // Determinar estado
-                    let estado: 'completada' | 'bien' | 'atrasada' | 'normal' = 'normal';
-                    if (progreso >= 100) estado = 'completada';
-                    else if (progreso >= 75) estado = 'bien';
-                    else if (meta.fechaObjetivo && new Date(meta.fechaObjetivo) < new Date()) estado = 'atrasada';
+
+                    // Análisis inteligente de la meta
+                    const hoy = new Date();
+                    const fechaInicio = new Date(meta.fechaInicio);
+                    const mesesTranscurridos = Math.max(1, Math.floor((hoy.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24 * 30)));
+                    const promedioMensualReal = saldoTotal / mesesTranscurridos;
+
+                    // Si tiene fecha objetivo
+                    let mesesHastaObjetivo = Infinity;
+                    let progresoEsperado = 0;
+                    let ahorroRequeridoMensual = 0;
+                    let estadoMeta: 'completada' | 'adelantado' | 'en_tiempo' | 'atrasado' | 'critico' | 'sin_fecha' = 'sin_fecha';
+                    let mensajeEstado = '';
+                    let recomendacion = '';
+
+                    if (meta.fechaObjetivo) {
+                      const fechaObj = new Date(meta.fechaObjetivo);
+                      mesesHastaObjetivo = Math.max(0, Math.floor((fechaObj.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24 * 30)));
+                      const mesesTotales = Math.floor((fechaObj.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24 * 30));
+
+                      // Progreso esperado lineal
+                      if (mesesTotales > 0) {
+                        progresoEsperado = Math.min(100, (mesesTranscurridos / mesesTotales) * 100);
+                      }
+
+                      // Ahorro mensual requerido para llegar a tiempo
+                      if (mesesHastaObjetivo > 0) {
+                        ahorroRequeridoMensual = faltante / mesesHastaObjetivo;
+                      }
+
+                      // Determinar estado
+                      if (progreso >= 100) {
+                        estadoMeta = 'completada';
+                        mensajeEstado = '¡Meta alcanzada!';
+                        recomendacion = 'Felicidades, ya cumpliste tu meta.';
+                      } else if (mesesHastaObjetivo <= 0) {
+                        estadoMeta = 'critico';
+                        mensajeEstado = 'Fecha vencida';
+                        recomendacion = `Te faltan ${formatearDineroCorto(faltante)}. Considera extender la fecha.`;
+                      } else if (progreso >= progresoEsperado + 10) {
+                        estadoMeta = 'adelantado';
+                        mensajeEstado = '¡Vas adelantado!';
+                        const mesesAdelanto = Math.floor((progreso - progresoEsperado) / (100 / mesesTotales));
+                        recomendacion = `Excelente ritmo. Podrías lograrlo ${mesesAdelanto} mes${mesesAdelanto > 1 ? 'es' : ''} antes.`;
+                      } else if (progreso >= progresoEsperado - 5) {
+                        estadoMeta = 'en_tiempo';
+                        mensajeEstado = 'Vas en tiempo';
+                        recomendacion = `Necesitas ahorrar ${formatearDineroCorto(ahorroRequeridoMensual)}/mes para cumplir.`;
+                      } else if (progreso >= progresoEsperado - 20) {
+                        estadoMeta = 'atrasado';
+                        mensajeEstado = 'Ligeramente atrasado';
+                        recomendacion = `Debes ahorrar ${formatearDineroCorto(ahorroRequeridoMensual)}/mes. Actualmente ahorras ~${formatearDineroCorto(promedioMensualReal)}/mes.`;
+                      } else {
+                        estadoMeta = 'critico';
+                        mensajeEstado = 'Muy atrasado';
+                        if (ahorroRequeridoMensual > promedioMensualReal * 3) {
+                          recomendacion = `Meta difícil: necesitas ${formatearDineroCorto(ahorroRequeridoMensual)}/mes pero ahorras ~${formatearDineroCorto(promedioMensualReal)}. Considera extender la fecha.`;
+                        } else {
+                          recomendacion = `Aumenta tu ahorro a ${formatearDineroCorto(ahorroRequeridoMensual)}/mes para alcanzar la meta.`;
+                        }
+                      }
+                    } else {
+                      // Sin fecha objetivo
+                      if (progreso >= 100) {
+                        estadoMeta = 'completada';
+                        mensajeEstado = '¡Meta alcanzada!';
+                      } else if (aporteActualMensual > 0) {
+                        mensajeEstado = `~${mesesRestantesRitmoActual} meses restantes`;
+                        recomendacion = `A tu ritmo actual (${formatearDineroCorto(aporteActualMensual)}/mes) llegarás en ${mesesRestantesRitmoActual > 12 ? Math.floor(mesesRestantesRitmoActual/12) + ' años' : mesesRestantesRitmoActual + ' meses'}.`;
+                      } else {
+                        mensajeEstado = 'Define un aporte mensual';
+                        recomendacion = 'Sin un aporte definido no podemos estimar cuándo lograrás tu meta.';
+                      }
+                    }
+
+                    // Colores del estado
+                    const estadoColores = {
+                      completada: { bg: 'bg-emerald-500/20', border: 'border-emerald-500/40', text: 'text-emerald-400', icon: '✓' },
+                      adelantado: { bg: 'bg-blue-500/20', border: 'border-blue-500/40', text: 'text-blue-400', icon: '🚀' },
+                      en_tiempo: { bg: 'bg-green-500/20', border: 'border-green-500/40', text: 'text-green-400', icon: '👍' },
+                      atrasado: { bg: 'bg-amber-500/20', border: 'border-amber-500/40', text: 'text-amber-400', icon: '⚠️' },
+                      critico: { bg: 'bg-red-500/20', border: 'border-red-500/40', text: 'text-red-400', icon: '🔴' },
+                      sin_fecha: { bg: 'bg-gray-500/20', border: 'border-gray-500/40', text: 'text-gray-400', icon: '📅' },
+                    };
+                    const estadoColor = estadoColores[estadoMeta];
 
                     const colorClases: Record<string, { bg: string; border: string; text: string; bar: string }> = {
                       emerald: { bg: 'from-emerald-900/40 to-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', bar: 'bg-gradient-to-r from-emerald-500 to-emerald-400' },
@@ -2457,9 +2536,25 @@ const FinanzasPage = () => {
                           </div>
                           <div className="flex items-center gap-1">
                             {meta.prioridad === 'alta' && <Flame size={16} className="text-red-400" />}
-                            {estado === 'completada' && <CheckCircle2 size={16} className="text-emerald-400" />}
-                            {estado === 'atrasada' && <AlertTriangle size={16} className="text-amber-400" />}
                           </div>
+                        </div>
+
+                        {/* Badge de Estado Inteligente */}
+                        <div className={`mb-4 p-3 rounded-xl border ${estadoColor.bg} ${estadoColor.border}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-sm font-bold ${estadoColor.text} flex items-center gap-2`}>
+                              <span>{estadoColor.icon}</span>
+                              {mensajeEstado}
+                            </span>
+                            {meta.fechaObjetivo && progresoEsperado > 0 && estadoMeta !== 'completada' && (
+                              <span className="text-xs text-gray-500">
+                                Esperado: {progresoEsperado.toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                          {recomendacion && (
+                            <p className="text-xs text-gray-400 leading-relaxed">{recomendacion}</p>
+                          )}
                         </div>
 
                         {/* Barra de progreso */}
@@ -2468,7 +2563,15 @@ const FinanzasPage = () => {
                             <span className="font-mono font-bold">{formatearDinero(saldoTotal)}</span>
                             <span className="text-gray-400">de {formatearDinero(meta.montoObjetivo)}</span>
                           </div>
-                          <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+                          <div className="h-3 bg-gray-800 rounded-full overflow-hidden relative">
+                            {/* Marcador de progreso esperado */}
+                            {meta.fechaObjetivo && progresoEsperado > 0 && progresoEsperado < 100 && (
+                              <div
+                                className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10"
+                                style={{ left: `${progresoEsperado}%` }}
+                                title={`Esperado: ${progresoEsperado.toFixed(0)}%`}
+                              />
+                            )}
                             <div
                               className={`h-full ${colores.bar} transition-all duration-500`}
                               style={{ width: `${Math.min(progreso, 100)}%` }}
@@ -2589,35 +2692,58 @@ const FinanzasPage = () => {
                           </div>
                         )}
 
-                        {/* Info adicional */}
+                        {/* Info adicional mejorada */}
                         <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
-                          {rendimientoMensualTotal > 0 && (
-                            <div className="bg-black/20 rounded-lg p-2">
-                              <p className="text-gray-500 text-xs">Rendimiento total</p>
-                              <p className="font-mono text-emerald-400">+{formatearDineroCorto(rendimientoMensualTotal)}/mes</p>
+                          {/* Ahorro requerido vs actual */}
+                          {ahorroRequeridoMensual > 0 && (
+                            <div className={`rounded-lg p-2 ${promedioMensualReal >= ahorroRequeridoMensual ? 'bg-emerald-500/10' : 'bg-amber-500/10'}`}>
+                              <p className="text-gray-500 text-xs">Debes ahorrar</p>
+                              <p className={`font-mono font-bold ${promedioMensualReal >= ahorroRequeridoMensual ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                {formatearDineroCorto(ahorroRequeridoMensual)}/mes
+                              </p>
                             </div>
                           )}
-                          {mesesRestantes < Infinity && mesesRestantes > 0 && (
+                          {/* Promedio real de ahorro */}
+                          {mesesTranscurridos > 1 && (
+                            <div className="bg-black/20 rounded-lg p-2">
+                              <p className="text-gray-500 text-xs">Tu promedio real</p>
+                              <p className="font-mono text-blue-400">{formatearDineroCorto(promedioMensualReal)}/mes</p>
+                            </div>
+                          )}
+                          {/* Rendimiento mensual */}
+                          {rendimientoMensualTotal > 0 && (
+                            <div className="bg-blue-500/10 rounded-lg p-2">
+                              <p className="text-gray-500 text-xs">Rendimientos est.</p>
+                              <p className="font-mono text-blue-400">+{formatearDineroCorto(rendimientoMensualTotal)}/mes</p>
+                            </div>
+                          )}
+                          {/* Tiempo restante estimado */}
+                          {mesesRestantesRitmoActual < Infinity && mesesRestantesRitmoActual > 0 && progreso < 100 && (
                             <div className="bg-black/20 rounded-lg p-2">
                               <p className="text-gray-500 text-xs">Tiempo estimado</p>
                               <p className="font-bold">
-                                {mesesRestantes < 12 
-                                  ? `${mesesRestantes} mes${mesesRestantes > 1 ? 'es' : ''}`
-                                  : `${Math.floor(mesesRestantes / 12)} año${Math.floor(mesesRestantes / 12) > 1 ? 's' : ''} ${mesesRestantes % 12 > 0 ? `y ${mesesRestantes % 12}m` : ''}`
+                                {mesesRestantesRitmoActual < 12
+                                  ? `${mesesRestantesRitmoActual} mes${mesesRestantesRitmoActual > 1 ? 'es' : ''}`
+                                  : `${Math.floor(mesesRestantesRitmoActual / 12)} año${Math.floor(mesesRestantesRitmoActual / 12) > 1 ? 's' : ''} ${mesesRestantesRitmoActual % 12 > 0 ? `y ${mesesRestantesRitmoActual % 12}m` : ''}`
                                 }
                               </p>
                             </div>
                           )}
-                          {meta.aporteMensualPlaneado > 0 && (
-                            <div className="bg-black/20 rounded-lg p-2">
-                              <p className="text-gray-500 text-xs">Aporte mensual</p>
-                              <p className="font-mono">{formatearDineroCorto(meta.aporteMensualPlaneado)}</p>
-                            </div>
-                          )}
-                          {meta.fechaObjetivo && (
+                          {/* Meses hasta fecha objetivo */}
+                          {meta.fechaObjetivo && mesesHastaObjetivo > 0 && (
                             <div className="bg-black/20 rounded-lg p-2">
                               <p className="text-gray-500 text-xs">Fecha objetivo</p>
-                              <p className="font-medium">{new Date(meta.fechaObjetivo + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}</p>
+                              <p className="font-medium">
+                                {new Date(meta.fechaObjetivo + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}
+                                <span className="text-xs text-gray-500 ml-1">({mesesHastaObjetivo}m)</span>
+                              </p>
+                            </div>
+                          )}
+                          {/* Aporte planeado */}
+                          {meta.aporteMensualPlaneado > 0 && (
+                            <div className="bg-black/20 rounded-lg p-2">
+                              <p className="text-gray-500 text-xs">Aporte planeado</p>
+                              <p className="font-mono">{formatearDineroCorto(meta.aporteMensualPlaneado)}</p>
                             </div>
                           )}
                         </div>
