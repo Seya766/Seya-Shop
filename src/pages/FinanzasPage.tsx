@@ -2423,8 +2423,12 @@ const FinanzasPage = () => {
 
                     // Análisis inteligente de la meta
                     const hoy = new Date();
-                    const fechaInicio = new Date(meta.fechaInicio);
-                    const mesesTranscurridos = Math.max(1, Math.floor((hoy.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24 * 30)));
+                    const fechaInicio = new Date(meta.fechaInicio + 'T12:00:00');
+                    // Calcular meses transcurridos correctamente
+                    const mesesTranscurridos = Math.max(1,
+                      (hoy.getFullYear() - fechaInicio.getFullYear()) * 12 +
+                      (hoy.getMonth() - fechaInicio.getMonth())
+                    );
                     const promedioMensualReal = saldoTotal / mesesTranscurridos;
 
                     // Si tiene fecha objetivo
@@ -2436,9 +2440,16 @@ const FinanzasPage = () => {
                     let recomendacion = '';
 
                     if (meta.fechaObjetivo) {
-                      const fechaObj = new Date(meta.fechaObjetivo);
-                      mesesHastaObjetivo = Math.max(0, Math.floor((fechaObj.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24 * 30)));
-                      const mesesTotales = Math.floor((fechaObj.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24 * 30));
+                      const fechaObj = new Date(meta.fechaObjetivo + 'T12:00:00');
+                      // Calcular meses de diferencia correctamente
+                      mesesHastaObjetivo = Math.max(0,
+                        (fechaObj.getFullYear() - hoy.getFullYear()) * 12 +
+                        (fechaObj.getMonth() - hoy.getMonth())
+                      );
+                      const mesesTotales = Math.max(1,
+                        (fechaObj.getFullYear() - fechaInicio.getFullYear()) * 12 +
+                        (fechaObj.getMonth() - fechaInicio.getMonth())
+                      );
 
                       // Progreso esperado lineal
                       if (mesesTotales > 0) {
