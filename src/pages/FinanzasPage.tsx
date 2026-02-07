@@ -2423,13 +2423,53 @@ const FinanzasPage = () => {
 
                     // Análisis inteligente de la meta
                     const hoy = new Date();
+                    const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
                     const fechaInicio = new Date(meta.fechaInicio + 'T12:00:00');
+
                     // Calcular meses transcurridos correctamente
                     const mesesTranscurridos = Math.max(1,
                       (hoy.getFullYear() - fechaInicio.getFullYear()) * 12 +
                       (hoy.getMonth() - fechaInicio.getMonth())
                     );
-                    const promedioMensualReal = saldoTotal / mesesTranscurridos;
+
+                    // Analizar historial de aportes por mes (últimos 6 meses)
+                    const todosAportes = meta.bolsillos.flatMap(b => b.historialAportes || []);
+                    const aportesPorMes: Record<string, number> = {};
+
+                    todosAportes.forEach(aporte => {
+                      if (aporte.tipo === 'aporte' || aporte.tipo === 'rendimiento') {
+                        const mesAporte = aporte.fecha.slice(0, 7); // YYYY-MM
+                        aportesPorMes[mesAporte] = (aportesPorMes[mesAporte] || 0) + aporte.monto;
+                      } else if (aporte.tipo === 'retiro') {
+                        const mesAporte = aporte.fecha.slice(0, 7);
+                        aportesPorMes[mesAporte] = (aportesPorMes[mesAporte] || 0) - Math.abs(aporte.monto);
+                      }
+                    });
+
+                    // Obtener los últimos 3 meses con aportes (excluyendo el mes actual)
+                    const mesesOrdenados = Object.keys(aportesPorMes)
+                      .filter(m => m < mesActual)
+                      .sort((a, b) => b.localeCompare(a))
+                      .slice(0, 3);
+
+                    const aporteMesActual = aportesPorMes[mesActual] || 0;
+                    const aportesUltimos3Meses = mesesOrdenados.map(m => aportesPorMes[m] || 0);
+                    const promedioUltimos3Meses = aportesUltimos3Meses.length > 0
+                      ? aportesUltimos3Meses.reduce((a, b) => a + b, 0) / aportesUltimos3Meses.length
+                      : 0;
+
+                    // Calcular tendencia (comparar último mes vs promedio anterior)
+                    let tendencia: 'subiendo' | 'estable' | 'bajando' | 'sin_datos' = 'sin_datos';
+                    if (aportesUltimos3Meses.length >= 2) {
+                      const ultimoMes = aportesUltimos3Meses[0] || 0;
+                      const promedioAnterior = aportesUltimos3Meses.slice(1).reduce((a, b) => a + b, 0) / (aportesUltimos3Meses.length - 1);
+                      if (ultimoMes > promedioAnterior * 1.15) tendencia = 'subiendo';
+                      else if (ultimoMes < promedioAnterior * 0.85) tendencia = 'bajando';
+                      else tendencia = 'estable';
+                    }
+
+                    // Usar el promedio más realista (últimos 3 meses si hay datos, sino el total)
+                    const promedioMensualReal = promedioUltimos3Meses > 0 ? promedioUltimos3Meses : (saldoTotal / mesesTranscurridos);
 
                     // Si tiene fecha objetivo
                     let mesesHastaObjetivo = Infinity;
@@ -2730,22 +2770,75 @@ const FinanzasPage = () => {
                           </div>
                         )}
 
+                        {/* Progreso del mes actual */}
+                        {(aporteMesActual !== 0 || ahorroRequeridoMensual > 0) && (
+                          <div className="mb-4 p-3 rounded-xl bg-black/30 border border-gray-700/30">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-medium text-gray-400">Este mes</span>
+                              {tendencia !== 'sin_datos' && (
+                                <span className={`text-xs flex items-center gap-1 ${
+                                  tendencia === 'subiendo' ? 'text-emerald-400' :
+                                  tendencia === 'bajando' ? 'text-red-400' : 'text-gray-400'
+                                }`}>
+                                  {tendencia === 'subiendo' && '📈 Subiendo'}
+                                  {tendencia === 'bajando' && '📉 Bajando'}
+                                  {tendencia === 'estable' && '➡️ Estable'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-end justify-between">
+                              <div>
+                                <p className={`text-xl font-mono font-bold ${aporteMesActual >= ahorroRequeridoMensual ? 'text-emerald-400' : 'text-white'}`}>
+                                  {formatearDineroCorto(aporteMesActual)}
+                                </p>
+                                {ahorroRequeridoMensual > 0 && (
+                                  <p className="text-xs text-gray-500">
+                                    de {formatearDineroCorto(ahorroRequeridoMensual)} necesarios
+                                  </p>
+                                )}
+                              </div>
+                              {ahorroRequeridoMensual > 0 && (
+                                <div className="text-right">
+                                  <p className={`text-sm font-bold ${aporteMesActual >= ahorroRequeridoMensual ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                    {((aporteMesActual / ahorroRequeridoMensual) * 100).toFixed(0)}%
+                                  </p>
+                                  {aporteMesActual >= ahorroRequeridoMensual ? (
+                                    <p className="text-xs text-emerald-400">✓ Cubierto</p>
+                                  ) : (
+                                    <p className="text-xs text-gray-500">Faltan {formatearDineroCorto(ahorroRequeridoMensual - aporteMesActual)}</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {ahorroRequeridoMensual > 0 && (
+                              <div className="mt-2 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all ${aporteMesActual >= ahorroRequeridoMensual ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                                  style={{ width: `${Math.min(100, (aporteMesActual / ahorroRequeridoMensual) * 100)}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Info adicional mejorada */}
                         <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
-                          {/* Ahorro requerido vs actual */}
-                          {ahorroRequeridoMensual > 0 && (
-                            <div className={`rounded-lg p-2 ${promedioMensualReal >= ahorroRequeridoMensual ? 'bg-emerald-500/10' : 'bg-amber-500/10'}`}>
-                              <p className="text-gray-500 text-xs">Debes ahorrar</p>
-                              <p className={`font-mono font-bold ${promedioMensualReal >= ahorroRequeridoMensual ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                {formatearDineroCorto(ahorroRequeridoMensual)}/mes
+                          {/* Promedio últimos 3 meses */}
+                          {promedioUltimos3Meses > 0 && (
+                            <div className={`rounded-lg p-2 ${promedioUltimos3Meses >= ahorroRequeridoMensual ? 'bg-emerald-500/10' : 'bg-black/20'}`}>
+                              <p className="text-gray-500 text-xs">Prom. últimos 3 meses</p>
+                              <p className={`font-mono font-bold ${promedioUltimos3Meses >= ahorroRequeridoMensual ? 'text-emerald-400' : 'text-blue-400'}`}>
+                                {formatearDineroCorto(promedioUltimos3Meses)}/mes
                               </p>
                             </div>
                           )}
-                          {/* Promedio real de ahorro */}
-                          {mesesTranscurridos > 1 && (
-                            <div className="bg-black/20 rounded-lg p-2">
-                              <p className="text-gray-500 text-xs">Tu promedio real</p>
-                              <p className="font-mono text-blue-400">{formatearDineroCorto(promedioMensualReal)}/mes</p>
+                          {/* Ahorro requerido */}
+                          {ahorroRequeridoMensual > 0 && (
+                            <div className={`rounded-lg p-2 ${promedioMensualReal >= ahorroRequeridoMensual ? 'bg-emerald-500/10' : 'bg-amber-500/10'}`}>
+                              <p className="text-gray-500 text-xs">Necesitas</p>
+                              <p className={`font-mono font-bold ${promedioMensualReal >= ahorroRequeridoMensual ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                {formatearDineroCorto(ahorroRequeridoMensual)}/mes
+                              </p>
                             </div>
                           )}
                           {/* Rendimiento mensual */}
@@ -2753,18 +2846,6 @@ const FinanzasPage = () => {
                             <div className="bg-blue-500/10 rounded-lg p-2">
                               <p className="text-gray-500 text-xs">Rendimientos est.</p>
                               <p className="font-mono text-blue-400">+{formatearDineroCorto(rendimientoMensualTotal)}/mes</p>
-                            </div>
-                          )}
-                          {/* Tiempo restante estimado */}
-                          {mesesRestantesRitmoActual < Infinity && mesesRestantesRitmoActual > 0 && progreso < 100 && (
-                            <div className="bg-black/20 rounded-lg p-2">
-                              <p className="text-gray-500 text-xs">Tiempo estimado</p>
-                              <p className="font-bold">
-                                {mesesRestantesRitmoActual < 12
-                                  ? `${mesesRestantesRitmoActual} mes${mesesRestantesRitmoActual > 1 ? 'es' : ''}`
-                                  : `${Math.floor(mesesRestantesRitmoActual / 12)} año${Math.floor(mesesRestantesRitmoActual / 12) > 1 ? 's' : ''} ${mesesRestantesRitmoActual % 12 > 0 ? `y ${mesesRestantesRitmoActual % 12}m` : ''}`
-                                }
-                              </p>
                             </div>
                           )}
                           {/* Meses hasta fecha objetivo */}
@@ -2775,13 +2856,6 @@ const FinanzasPage = () => {
                                 {new Date(meta.fechaObjetivo + 'T12:00:00').toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}
                                 <span className="text-xs text-gray-500 ml-1">({mesesHastaObjetivo}m)</span>
                               </p>
-                            </div>
-                          )}
-                          {/* Aporte planeado */}
-                          {meta.aporteMensualPlaneado > 0 && (
-                            <div className="bg-black/20 rounded-lg p-2">
-                              <p className="text-gray-500 text-xs">Aporte planeado</p>
-                              <p className="font-mono">{formatearDineroCorto(meta.aporteMensualPlaneado)}</p>
                             </div>
                           )}
                         </div>
