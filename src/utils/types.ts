@@ -24,10 +24,13 @@ export interface HistorialGarantia {
   resolucion?: string; // 'reposicion' | 'devolucion' | 'reparacion'
 }
 
+export type PlataformaMensajeria = 'whatsapp' | 'telegram';
+
 export interface Factura {
   id: number;
   cliente: string;
   telefono: string;
+  plataforma?: PlataformaMensajeria; // whatsapp o telegram
   revendedor: string;
   empresa: string;
   montoFactura: number;

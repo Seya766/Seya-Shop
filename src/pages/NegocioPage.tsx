@@ -9,6 +9,7 @@ import {
   Layers, CircleDollarSign, List, Zap, FileText, ChevronDown, ArrowUpDown, Link2
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { useTenant } from '../context/TenantContext';
 import { META_MENSUAL_NEGOCIO, COLORES_RANKING } from '../utils/constants';
 import { 
   formatearDinero, formatearDineroCorto, getColombiaDateOnly, 
@@ -360,9 +361,18 @@ const FacturaCard = memo(({
                 {!f.cobradoACliente && (
                   <MagneticButton
                     onClick={() => onEnviarRecordatorio(f)}
-                    className="p-2.5 sm:p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 transition-colors"
+                    className={`p-2.5 sm:p-3 rounded-xl border transition-colors ${
+                      f.plataforma === 'telegram'
+                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
+                        : 'bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20'
+                    }`}
+                    title={f.plataforma === 'telegram' ? 'Enviar por Telegram' : 'Enviar por WhatsApp'}
                   >
-                    <MessageCircle size={18} className="sm:w-5 sm:h-5" />
+                    {f.plataforma === 'telegram' ? (
+                      <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] sm:w-5 sm:h-5 fill-current"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] sm:w-5 sm:h-5 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    )}
                   </MagneticButton>
                 )}
 
@@ -485,6 +495,7 @@ FacturaCard.displayName = 'FacturaCard';
 // =============================================
 const NegocioPage = () => {
   const { facturas, setFacturas, revendedoresOcultos, setRevendedoresOcultos, pagosRevendedores, setPagosRevendedores, facturasOcultas, setFacturasOcultas, userId } = useData();
+  const { currentTenant } = useTenant();
 
   // Toggle para mostrar/ocultar facturas ocultas en la lista
   const [mostrarOcultas, setMostrarOcultas] = useState(false);
@@ -493,7 +504,7 @@ const NegocioPage = () => {
   // ESTADOS UI
   // =============================================
   const [form, setForm] = useState({
-    cliente: '', telefono: '', revendedor: '', empresa: '',
+    cliente: '', telefono: '', plataforma: 'whatsapp' as 'whatsapp' | 'telegram', revendedor: '', empresa: '',
     montoFactura: '', porcentajeCobro: 50, cobroCliente: '',
   });
 
@@ -1040,6 +1051,7 @@ const NegocioPage = () => {
       id: Date.now(),
       cliente: form.cliente,
       telefono: form.telefono,
+      plataforma: form.plataforma,
       revendedor: form.revendedor || 'Directo',
       empresa: form.empresa,
       montoFactura: monto,
@@ -1393,10 +1405,38 @@ const NegocioPage = () => {
 
   const enviarRecordatorio = useCallback((f: Factura) => {
     const saldo = f.cobroCliente - (f.abono || 0);
-    const mensaje = `Hola ${f.cliente}, te escribo de Seya Shop para recordarte el saldo pendiente de ${formatearDinero(saldo)} por el servicio de ${f.empresa}. Quedo atento/a, gracias!`;
-    const url = f.telefono ? `https://wa.me/57${f.telefono}?text=${encodeURIComponent(mensaje)}` : `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    window.open(url, '_blank');
-  }, []);
+    const shopName = currentTenant?.shopName || 'la tienda';
+    const mensaje = `¡Hola ${f.cliente}! 👋
+
+Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${formatearDinero(saldo)}* por tu servicio de *${f.empresa}*.
+
+¿Cuándo podrías realizar el pago? 🙏
+
+¡Gracias!`;
+
+    const plataforma = f.plataforma || 'whatsapp';
+    const telefono = f.telefono?.replace(/\D/g, '') || '';
+
+    if (plataforma === 'telegram') {
+      // Para Telegram usamos el deep link
+      const telegramUrl = telefono
+        ? `https://t.me/+57${telefono}`
+        : 'https://t.me/';
+      // Copiamos el mensaje al portapapeles y abrimos Telegram
+      navigator.clipboard.writeText(mensaje).then(() => {
+        alert('Mensaje copiado al portapapeles. Se abrirá Telegram.');
+        window.open(telegramUrl, '_blank');
+      }).catch(() => {
+        window.open(telegramUrl, '_blank');
+      });
+    } else {
+      // WhatsApp
+      const waUrl = telefono
+        ? `https://wa.me/57${telefono}?text=${encodeURIComponent(mensaje)}`
+        : `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
+      window.open(waUrl, '_blank');
+    }
+  }, [currentTenant?.shopName]);
 
   // =============================================
   // FUNCIÓN MEJORADA: DESCARGAR ESTADO DE CUENTA
@@ -3256,15 +3296,45 @@ const NegocioPage = () => {
                     
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Teléfono</label>
-                      <input 
-                        type="tel"
-                        className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl p-3.5 text-sm text-white focus:border-purple-500/50 outline-none transition-colors placeholder:text-gray-600"
-                        placeholder="3001234567"
-                        value={form.telefono}
-                        onChange={e => setForm({...form, telefono: e.target.value})}
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="tel"
+                          className="flex-1 bg-[#0a0d14] border border-gray-700/50 rounded-xl p-3.5 text-sm text-white focus:border-purple-500/50 outline-none transition-colors placeholder:text-gray-600"
+                          placeholder="3001234567"
+                          value={form.telefono}
+                          onChange={e => setForm({...form, telefono: e.target.value})}
+                        />
+                        <div className="flex rounded-xl overflow-hidden border border-gray-700/50">
+                          <button
+                            type="button"
+                            onClick={() => setForm({...form, plataforma: 'whatsapp'})}
+                            className={`px-3 py-2 flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                              form.plataforma === 'whatsapp'
+                                ? 'bg-green-600 text-white'
+                                : 'bg-[#0a0d14] text-gray-400 hover:text-white'
+                            }`}
+                            title="WhatsApp"
+                          >
+                            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                            <span className="hidden sm:inline">WA</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setForm({...form, plataforma: 'telegram'})}
+                            className={`px-3 py-2 flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                              form.plataforma === 'telegram'
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-[#0a0d14] text-gray-400 hover:text-white'
+                            }`}
+                            title="Telegram"
+                          >
+                            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                            <span className="hidden sm:inline">TG</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    
+
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Revendedor</label>
                       <input 
