@@ -2450,6 +2450,16 @@ const FinanzasPage = () => {
                         ahorroRequeridoMensual = faltante / mesesHastaObjetivo;
                       }
 
+                      // Calcular fecha realista basada en el ritmo actual
+                      let mesesParaLlegarRitmoActual = Infinity;
+                      let fechaRealistaEstimada = '';
+                      if (promedioMensualReal > 0) {
+                        mesesParaLlegarRitmoActual = Math.ceil(faltante / promedioMensualReal);
+                        const nuevaFecha = new Date();
+                        nuevaFecha.setMonth(nuevaFecha.getMonth() + mesesParaLlegarRitmoActual);
+                        fechaRealistaEstimada = nuevaFecha.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' });
+                      }
+
                       // Determinar estado
                       if (progreso >= 100) {
                         estadoMeta = 'completada';
@@ -2458,27 +2468,44 @@ const FinanzasPage = () => {
                       } else if (mesesHastaObjetivo <= 0) {
                         estadoMeta = 'critico';
                         mensajeEstado = 'Fecha vencida';
-                        recomendacion = `Te faltan ${formatearDineroCorto(faltante)}. Considera extender la fecha.`;
+                        if (promedioMensualReal > 0) {
+                          recomendacion = `A tu ritmo (${formatearDineroCorto(promedioMensualReal)}/mes), llegarías en ${mesesParaLlegarRitmoActual} meses → ${fechaRealistaEstimada}.`;
+                        } else {
+                          recomendacion = `Te faltan ${formatearDineroCorto(faltante)}. Define un aporte mensual.`;
+                        }
                       } else if (progreso >= progresoEsperado + 10) {
                         estadoMeta = 'adelantado';
                         mensajeEstado = '¡Vas adelantado!';
-                        const mesesAdelanto = Math.floor((progreso - progresoEsperado) / (100 / mesesTotales));
+                        const mesesAdelanto = Math.max(1, Math.floor((progreso - progresoEsperado) / (100 / Math.max(1, mesesTotales))));
                         recomendacion = `Excelente ritmo. Podrías lograrlo ${mesesAdelanto} mes${mesesAdelanto > 1 ? 'es' : ''} antes.`;
                       } else if (progreso >= progresoEsperado - 5) {
                         estadoMeta = 'en_tiempo';
                         mensajeEstado = 'Vas en tiempo';
-                        recomendacion = `Necesitas ahorrar ${formatearDineroCorto(ahorroRequeridoMensual)}/mes para cumplir.`;
-                      } else if (progreso >= progresoEsperado - 20) {
-                        estadoMeta = 'atrasado';
-                        mensajeEstado = 'Ligeramente atrasado';
-                        recomendacion = `Debes ahorrar ${formatearDineroCorto(ahorroRequeridoMensual)}/mes. Actualmente ahorras ~${formatearDineroCorto(promedioMensualReal)}/mes.`;
+                        recomendacion = `Sigue así. A tu ritmo actual llegas a tiempo.`;
                       } else {
-                        estadoMeta = 'critico';
-                        mensajeEstado = 'Muy atrasado';
-                        if (ahorroRequeridoMensual > promedioMensualReal * 3) {
-                          recomendacion = `Meta difícil: necesitas ${formatearDineroCorto(ahorroRequeridoMensual)}/mes pero ahorras ~${formatearDineroCorto(promedioMensualReal)}. Considera extender la fecha.`;
+                        // Está atrasado - ver qué tan alcanzable es
+                        const puedeAlcanzar = promedioMensualReal >= ahorroRequeridoMensual * 0.7; // Si ahorra al menos 70% de lo necesario
+
+                        if (puedeAlcanzar) {
+                          estadoMeta = 'atrasado';
+                          mensajeEstado = 'Un poco atrasado';
+                          recomendacion = `Aumenta de ${formatearDineroCorto(promedioMensualReal)} a ${formatearDineroCorto(ahorroRequeridoMensual)}/mes para llegar a tiempo.`;
                         } else {
-                          recomendacion = `Aumenta tu ahorro a ${formatearDineroCorto(ahorroRequeridoMensual)}/mes para alcanzar la meta.`;
+                          // La fecha no es realista
+                          estadoMeta = 'critico';
+                          if (promedioMensualReal > 0 && mesesParaLlegarRitmoActual < Infinity) {
+                            if (mesesParaLlegarRitmoActual <= 24) {
+                              mensajeEstado = 'Extiende la fecha';
+                              recomendacion = `A tu ritmo (${formatearDineroCorto(promedioMensualReal)}/mes) llegas en ${mesesParaLlegarRitmoActual} meses → ${fechaRealistaEstimada}.`;
+                            } else {
+                              const años = Math.floor(mesesParaLlegarRitmoActual / 12);
+                              mensajeEstado = 'Meta a largo plazo';
+                              recomendacion = `A tu ritmo actual necesitas ~${años} año${años > 1 ? 's' : ''}. Puedes aumentar tu ahorro o ajustar la meta.`;
+                            }
+                          } else {
+                            mensajeEstado = 'Sin datos suficientes';
+                            recomendacion = 'Empieza a ahorrar regularmente para ver proyecciones.';
+                          }
                         }
                       }
                     } else {
