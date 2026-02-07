@@ -71,7 +71,7 @@ const Navbar = ({ onBackup, onRestore, onToggleChat, chatOpen, children }: Navba
               <Zap className="text-white w-4 h-4 sm:w-5 sm:h-5 fill-current" />
             </div>
             <div>
-              <h1 className="text-sm sm:text-lg font-bold tracking-tight text-white leading-none truncate max-w-[100px] sm:max-w-none">{shopName}</h1>
+              <h1 className="text-sm sm:text-lg font-bold tracking-tight text-white leading-none truncate max-w-[140px] sm:max-w-none">{shopName}</h1>
               <span className="text-[9px] sm:text-[10px] text-purple-400 font-medium tracking-wide flex items-center gap-1">
                 <User size={9} className="sm:w-[10px] sm:h-[10px]" /> {userName}
               </span>

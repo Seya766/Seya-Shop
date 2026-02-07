@@ -6,6 +6,9 @@ import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaF
 import { STORAGE_KEYS } from '../utils/constants';
 import { getColombiaDateOnly } from '../utils/helpers';
 
+// Admin user ID - all data is stored under this path for Firebase permissions
+const ADMIN_USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
+
 interface DataContextType {
   loading: boolean;
   userId: string | null;
@@ -120,6 +123,17 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     });
   };
 
+  // Helper to get the storage key with tenant prefix
+  // All data stored under ADMIN_USER_ID path for Firebase permissions
+  const getTenantKey = (baseKey: string, tenantId: string) => {
+    // For admin, use the base key directly (backwards compatible)
+    if (tenantId === ADMIN_USER_ID) {
+      return baseKey;
+    }
+    // For other tenants, prefix with their ID
+    return `${tenantId}_${baseKey}`;
+  };
+
   const loadAllData = async (uid: string) => {
     const keys = [
       { key: STORAGE_KEYS.FACTURAS, setter: setFacturasState, corregir: true },
@@ -136,7 +150,9 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     await Promise.all(
       keys.map(async ({ key, setter, corregir }) => {
         try {
-          const docRef = doc(db, 'users', uid, 'data', key);
+          // All data stored under ADMIN path, with tenant-specific key prefix
+          const tenantKey = getTenantKey(key, uid);
+          const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
           const snapshot = await getDoc(docRef);
           if (snapshot.exists()) {
             let value = snapshot.data().value;
@@ -157,7 +173,9 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     if (!userId) return;
     setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
-      const docRef = doc(db, 'users', userId, 'data', key);
+      // All data stored under ADMIN path, with tenant-specific key prefix
+      const tenantKey = userId === ADMIN_USER_ID ? key : `${userId}_${key}`;
+      const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
       await setDoc(docRef, { value, updatedAt: new Date().toISOString() });
       if (navigator.onLine) {
         setSyncStatus('synced');
@@ -292,7 +310,9 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
             ];
 
             updates.forEach(({ key, value }) => {
-              const docRef = doc(db, 'users', userId, 'data', key);
+              // All data stored under ADMIN path, with tenant-specific key prefix
+              const tenantKey = userId === ADMIN_USER_ID ? key : `${userId}_${key}`;
+              const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
               batch.set(docRef, { value, updatedAt: new Date().toISOString() });
             });
 

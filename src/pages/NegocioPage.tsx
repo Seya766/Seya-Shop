@@ -290,74 +290,98 @@ const FacturaCard = memo(({
               </div>
             </div>
 
-            <div className="flex items-center gap-3 self-end sm:self-center flex-shrink-0">
-              {/* Botón de pago al proveedor con soporte para abonos */}
-              <div className="flex flex-col items-center">
-                {!f.pagadoAProveedor ? (
-                  <div className="flex gap-1">
-                    <MagneticButton 
-                      onClick={() => onTogglePago(f.id)} 
-                      className="p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10"
-                      title="Marcar como pagado completo"
-                    >
-                      <Check size={20} />
-                    </MagneticButton>
-                    <MagneticButton 
-                      onClick={() => onAbonoProveedor(f)} 
-                      className="p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-blue-400 hover:border-blue-500/50 hover:bg-blue-500/10"
-                      title="Registrar abono parcial"
-                    >
-                      <DollarSign size={20} />
-                    </MagneticButton>
-                  </div>
-                ) : (
-                  <MagneticButton 
-                    onClick={() => onTogglePago(f.id)} 
-                    className="p-3 rounded-xl border transition-colors bg-gradient-to-br from-blue-600 to-indigo-600 border-blue-500 text-white shadow-lg shadow-blue-500/30"
-                    title="Desmarcar pago"
-                  >
-                    <DollarSign size={20} />
-                  </MagneticButton>
-                )}
-                {/* Progreso de pago al proveedor */}
-                {tieneAbonoProveedor && (
-                  <div className="mt-2 w-full">
-                    <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(abonoProveedorActual / f.montoFactura) * 100}%` }}
-                      />
-                    </div>
-                    <p className="text-[8px] text-yellow-400 text-center mt-0.5">
-                      {formatearDinero(abonoProveedorActual)} / {formatearDinero(f.montoFactura)}
-                    </p>
-                  </div>
-                )}
+            {/* Mobile: Stack vertically, Desktop: Horizontal */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto sm:self-center flex-shrink-0">
+              {/* Ganancia - First on mobile for visibility */}
+              <div className="flex sm:hidden items-center justify-between bg-gray-800/30 rounded-xl p-3 border border-gray-700/30">
+                <p className="text-[10px] text-gray-500 uppercase font-bold">Ganancia</p>
+                <p className="text-xl font-bold font-mono text-white">{formatearDinero(f.cobroCliente)}</p>
               </div>
-              
-              {!f.cobradoACliente && (
-                <MagneticButton 
-                  onClick={() => onEnviarRecordatorio(f)} 
-                  className="p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 transition-colors"
-                >
-                  <MessageCircle size={20} />
-                </MagneticButton>
+
+              {/* Abono progress bar on mobile */}
+              {f.abono > 0 && !f.cobradoACliente && (
+                <div className="sm:hidden">
+                  <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500"
+                      style={{ width: `${(f.abono / f.cobroCliente) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-[9px] text-orange-400 text-right mt-1">Resta: {formatearDinero(saldoPendiente)}</p>
+                </div>
               )}
 
-              <MagneticButton 
-                onClick={() => onIniciarCobro(f)} 
-                className={`px-5 py-3 rounded-xl flex items-center gap-2 font-bold text-sm border transition-colors ${f.cobradoACliente ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-gray-700/50 border-gray-600/50 text-white hover:bg-gray-600/50'}`}
-              >
-                {f.cobradoACliente ? <Check size={18} /> : <span>Cobrar</span>}
-              </MagneticButton>
+              {/* Buttons row */}
+              <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
+                {/* Botón de pago al proveedor con soporte para abonos */}
+                <div className="flex flex-col items-center">
+                  {!f.pagadoAProveedor ? (
+                    <div className="flex gap-1">
+                      <MagneticButton
+                        onClick={() => onTogglePago(f.id)}
+                        className="p-2.5 sm:p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10"
+                        title="Marcar como pagado completo"
+                      >
+                        <Check size={18} className="sm:w-5 sm:h-5" />
+                      </MagneticButton>
+                      <MagneticButton
+                        onClick={() => onAbonoProveedor(f)}
+                        className="p-2.5 sm:p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-blue-400 hover:border-blue-500/50 hover:bg-blue-500/10"
+                        title="Registrar abono parcial"
+                      >
+                        <DollarSign size={18} className="sm:w-5 sm:h-5" />
+                      </MagneticButton>
+                    </div>
+                  ) : (
+                    <MagneticButton
+                      onClick={() => onTogglePago(f.id)}
+                      className="p-2.5 sm:p-3 rounded-xl border transition-colors bg-gradient-to-br from-blue-600 to-indigo-600 border-blue-500 text-white shadow-lg shadow-blue-500/30"
+                      title="Desmarcar pago"
+                    >
+                      <DollarSign size={18} className="sm:w-5 sm:h-5" />
+                    </MagneticButton>
+                  )}
+                  {/* Progreso de pago al proveedor */}
+                  {tieneAbonoProveedor && (
+                    <div className="mt-1.5 sm:mt-2 w-full">
+                      <div className="h-1 sm:h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-500"
+                          style={{ width: `${(abonoProveedorActual / f.montoFactura) * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-[7px] sm:text-[8px] text-yellow-400 text-center mt-0.5">
+                        {formatearDineroCorto(abonoProveedorActual)} / {formatearDineroCorto(f.montoFactura)}
+                      </p>
+                    </div>
+                  )}
+                </div>
 
-              <div className="text-right ml-2 min-w-[100px]">
+                {!f.cobradoACliente && (
+                  <MagneticButton
+                    onClick={() => onEnviarRecordatorio(f)}
+                    className="p-2.5 sm:p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 transition-colors"
+                  >
+                    <MessageCircle size={18} className="sm:w-5 sm:h-5" />
+                  </MagneticButton>
+                )}
+
+                <MagneticButton
+                  onClick={() => onIniciarCobro(f)}
+                  className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl flex items-center gap-2 font-bold text-xs sm:text-sm border transition-colors ${f.cobradoACliente ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-gray-700/50 border-gray-600/50 text-white hover:bg-gray-600/50'}`}
+                >
+                  {f.cobradoACliente ? <Check size={16} className="sm:w-[18px] sm:h-[18px]" /> : <span>Cobrar</span>}
+                </MagneticButton>
+              </div>
+
+              {/* Ganancia - Desktop only */}
+              <div className="hidden sm:block text-right ml-2 min-w-[100px]">
                 <p className="text-[10px] text-gray-500 uppercase font-bold">Ganancia</p>
                 <p className="text-2xl font-bold font-mono text-white">{formatearDinero(f.cobroCliente)}</p>
                 {f.abono > 0 && !f.cobradoACliente && (
                   <div className="mt-2">
                     <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500"
                         style={{ width: `${(f.abono / f.cobroCliente) * 100}%` }}
                       />
