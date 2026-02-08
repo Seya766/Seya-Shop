@@ -14,7 +14,7 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { Settings, X, Eye } from 'lucide-react';
 
 const AppContent = () => {
-  const { descargarBackup, importarBackup, loading } = useData();
+  const { descargarBackup, importarBackup, loading, syncStatus } = useData();
   const { currentTenant, isImpersonating, originalTenant, stopImpersonating } = useTenant();
   const [chatOpen, setChatOpen] = useState(false);
   const navigate = useNavigate();
@@ -51,6 +51,7 @@ const AppContent = () => {
         onRestore={importarBackup}
         onToggleChat={() => setChatOpen(prev => !prev)}
         chatOpen={chatOpen}
+        syncStatus={syncStatus}
       />
       {/* Admin button - only visible to admin */}
       {currentTenant?.isAdmin && (

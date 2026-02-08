@@ -3065,31 +3065,31 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
                           .map((rev, idx) => {
                           const isHidden = revendedoresOcultos.includes(rev.nombre);
                           return (
-                            <div 
-                              key={idx} 
-                              className={`bg-[#0a0d14] p-5 rounded-xl border flex flex-col gap-4 transition-colors ${isHidden ? 'border-gray-800 opacity-60' : 'border-orange-500/30'}`}
+                            <div
+                              key={idx}
+                              className={`bg-[#0a0d14] p-4 sm:p-5 rounded-xl border flex flex-col gap-3 sm:gap-4 transition-colors ${isHidden ? 'border-gray-800 opacity-60' : 'border-orange-500/30'}`}
                             >
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-lg">
+                              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                                <div className="flex items-center gap-3 sm:gap-4">
+                                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg sm:text-xl shadow-lg flex-shrink-0">
                                     {rev.nombre.charAt(0).toUpperCase()}
                                   </div>
-                                  <div>
+                                  <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
-                                      <h3 className="font-bold text-white text-lg">{rev.nombre}</h3>
+                                      <h3 className="font-bold text-white text-base sm:text-lg truncate">{rev.nombre}</h3>
                                       <button
                                         onClick={() => copiarLinkPortal(rev.nombre)}
-                                        className="p-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-400 transition-colors"
+                                        className="p-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-400 transition-colors flex-shrink-0"
                                         title="Copiar link del portal"
                                       >
                                         <Link2 size={14} />
                                       </button>
                                     </div>
-                                    <p className="text-sm text-gray-500">{rev.facturasPendientes} facturas</p>
+                                    <p className="text-xs sm:text-sm text-gray-500">{rev.facturasPendientes} facturas</p>
                                   </div>
                                 </div>
-                                <p className="text-2xl font-mono font-bold text-orange-400">
-                                  {formatearDinero(rev.deudaTotal)}
+                                <p className="text-xl sm:text-2xl font-mono font-bold text-orange-400 sm:text-right">
+                                  {formatearDineroCorto(rev.deudaTotal)}
                                 </p>
                               </div>
                               <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-800">
@@ -3532,7 +3532,7 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold">Ganancia Mes</p>
-                  <p className="text-white font-mono font-bold text-base sm:text-xl truncate">{formatearDinero(gananciaNetaMensual)}</p>
+                  <p className="text-white font-mono font-bold text-sm sm:text-xl whitespace-nowrap overflow-hidden text-ellipsis" title={formatearDinero(gananciaNetaMensual)}>{formatearDineroCorto(gananciaNetaMensual)}</p>
                   <div className="w-full bg-gray-800 h-1.5 sm:h-2 rounded-full mt-1.5 sm:mt-2 overflow-hidden">
                     <div
                       className="bg-gradient-to-r from-purple-500 via-fuchsia-500 to-emerald-400 h-full rounded-full transition-all duration-500"
