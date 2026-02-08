@@ -24,10 +24,10 @@ interface ToolCall {
   function: { name: string; arguments: string };
 }
 
-// Action confirmation state
+// Action confirmation state - supports multiple tool calls
 interface PendingAction {
-  tool_call: ToolCall;
-  description: string;
+  tool_calls: ToolCall[];
+  descriptions: string[];
   messages: ChatMessage[];
 }
 
@@ -592,6 +592,7 @@ REGLAS CRÍTICAS SOBRE HERRAMIENTAS:
 - Si no tenés suficiente info para ejecutar una acción (falta nombre, monto, etc), PREGUNTÁ antes de ejecutar
 - Verbos de CONSULTA (no usar herramientas): mostrar, ver, listar, cuánto, cuántos, cuáles, dime, dame, quiénes, revisar, analizar, resumir
 - Verbos de ACCIÓN (sí usar herramientas): crear, agregar, modificar, cambiar, eliminar, borrar, registrar, marcar, pagar
+- **MÚLTIPLES ACCIONES**: Si el usuario menciona VARIOS gastos, ingresos o acciones en UN SOLO mensaje (ej: "gasté 50k en Frisby, 30k en Uber y 20k en café"), DEBÉS ejecutar MÚLTIPLES tool_calls en tu respuesta - una por cada acción. NO hagas solo una. Ejemplo: si dicen "gasté 56800 en Frisby, 79000 en ABC Angus, 10636 en Uber", hacés 3 llamadas a crear_transaccion
 
 CÓMO RESPONDER:
 - Español colombiano, natural y directo. Nada de frases genéricas ni "según los datos proporcionados"
@@ -1045,51 +1046,74 @@ CÓMO RESPONDER:
     return { content: choice?.content || '', tool_calls: choice?.tool_calls };
   }, [buildSystemPrompt]);
 
-  // Handle confirmed action execution
+  // Handle confirmed action execution - supports multiple tool calls
   const confirmAction = useCallback(async () => {
     if (!pendingAction) return;
-    const { tool_call, messages: contextMessages } = pendingAction;
+    const { tool_calls, messages: contextMessages } = pendingAction;
     setPendingAction(null);
     setIsLoading(true);
 
     try {
-      // Execute the tool first
-      const result = executeTool(tool_call);
-      const parsed = JSON.parse(result);
+      // Execute all tool calls
+      const results: { ok: boolean; message: string }[] = [];
+      const toolResponses: ChatMessage[] = [];
 
-      if (!parsed.ok) {
-        // Tool execution itself failed (e.g. invoice not found)
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', content: `❌ ${parsed.message}` };
-          return updated;
-        });
-        return;
-      }
-
-      // Tool succeeded - now try to get AI's natural language response
-      try {
-        const toolResponse: ChatMessage = { role: 'tool', content: result, tool_call_id: tool_call.id, name: tool_call.function.name };
-        const assistantToolMsg: ChatMessage = { role: 'assistant', content: '', tool_calls: [tool_call] };
-        const fullConversation = [...contextMessages, assistantToolMsg, toolResponse];
-        const aiResponse = await callAI(fullConversation);
-
-        const finalContent = aiResponse.content || parsed.message;
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', content: `✅ ${finalContent}` };
-          return updated;
-        });
-      } catch {
-        // AI follow-up failed (400 etc), but tool already executed - show tool result
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', content: `✅ ${parsed.message}` };
-          return updated;
+      for (const tool_call of tool_calls) {
+        const result = executeTool(tool_call);
+        const parsed = JSON.parse(result);
+        results.push(parsed);
+        toolResponses.push({
+          role: 'tool',
+          content: result,
+          tool_call_id: tool_call.id,
+          name: tool_call.function.name,
         });
       }
+
+      const successCount = results.filter(r => r.ok).length;
+      const failCount = results.length - successCount;
+
+      // Build summary message
+      let summaryMessage = '';
+      if (results.length === 1) {
+        // Single action
+        summaryMessage = results[0].ok ? `✅ ${results[0].message}` : `❌ ${results[0].message}`;
+      } else {
+        // Multiple actions
+        const successMsgs = results.filter(r => r.ok).map(r => `• ${r.message}`);
+        const failMsgs = results.filter(r => !r.ok).map(r => `• ${r.message}`);
+
+        if (successCount > 0) {
+          summaryMessage += `✅ **${successCount} accion${successCount > 1 ? 'es' : ''} ejecutada${successCount > 1 ? 's' : ''}:**\n${successMsgs.join('\n')}`;
+        }
+        if (failCount > 0) {
+          if (summaryMessage) summaryMessage += '\n\n';
+          summaryMessage += `❌ **${failCount} error${failCount > 1 ? 'es' : ''}:**\n${failMsgs.join('\n')}`;
+        }
+      }
+
+      // Try to get AI's natural language response if all succeeded
+      if (successCount > 0 && failCount === 0) {
+        try {
+          const assistantToolMsg: ChatMessage = { role: 'assistant', content: '', tool_calls };
+          const fullConversation = [...contextMessages, assistantToolMsg, ...toolResponses];
+          const aiResponse = await callAI(fullConversation);
+
+          if (aiResponse.content) {
+            summaryMessage = `✅ ${aiResponse.content}`;
+          }
+        } catch {
+          // AI follow-up failed, use our summary
+        }
+      }
+
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { role: 'assistant', content: summaryMessage };
+        return updated;
+      });
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Error ejecutando acción';
+      const errorMsg = err instanceof Error ? err.message : 'Error ejecutando acciones';
       setMessages(prev => {
         const updated = [...prev];
         updated[updated.length - 1] = { role: 'assistant', content: `❌ Error: ${errorMsg}` };
@@ -1131,14 +1155,22 @@ CÓMO RESPONDER:
       const aiResponse = await callAI(newMessages);
 
       if (aiResponse.tool_calls && aiResponse.tool_calls.length > 0) {
-        // AI wants to perform an action - ask for confirmation
-        const toolCall = aiResponse.tool_calls[0];
-        const description = describeToolCall(toolCall);
-        setPendingAction({ tool_call: toolCall, description, messages: newMessages });
+        // AI wants to perform actions - ask for confirmation
+        const toolCalls = aiResponse.tool_calls;
+        const descriptions = toolCalls.map(tc => describeToolCall(tc));
+        setPendingAction({ tool_calls: toolCalls, descriptions, messages: newMessages });
 
-        const confirmText = aiResponse.content
-          ? `${aiResponse.content}\n\n**¿Confirmar acción?**`
-          : `Quiero ejecutar: **${description}**\n\n**¿Confirmar?**`;
+        let confirmText: string;
+        if (toolCalls.length === 1) {
+          confirmText = aiResponse.content
+            ? `${aiResponse.content}\n\n**¿Confirmar acción?**`
+            : `Quiero ejecutar: **${descriptions[0]}**\n\n**¿Confirmar?**`;
+        } else {
+          const listDesc = descriptions.map((d, i) => `${i + 1}. ${d}`).join('\n');
+          confirmText = aiResponse.content
+            ? `${aiResponse.content}\n\n**${toolCalls.length} acciones a ejecutar:**\n${listDesc}\n\n**¿Confirmar todas?**`
+            : `Voy a ejecutar **${toolCalls.length} acciones:**\n${listDesc}\n\n**¿Confirmar todas?**`;
+        }
 
         setMessages(prev => {
           const updated = [...prev];
@@ -1374,7 +1406,18 @@ CÓMO RESPONDER:
                   exit={{ opacity: 0, height: 0 }}
                   className="mx-3 mb-2 p-3 bg-cyan-900/20 border border-cyan-500/30 rounded-xl overflow-hidden"
                 >
-                  <p className="text-xs text-cyan-300 mb-2 font-medium">{pendingAction.description}</p>
+                  {pendingAction.descriptions.length === 1 ? (
+                    <p className="text-xs text-cyan-300 mb-2 font-medium">{pendingAction.descriptions[0]}</p>
+                  ) : (
+                    <div className="mb-2">
+                      <p className="text-xs text-cyan-300 font-medium mb-1">{pendingAction.descriptions.length} acciones:</p>
+                      <ul className="text-xs text-cyan-200/80 space-y-0.5">
+                        {pendingAction.descriptions.map((desc, i) => (
+                          <li key={i} className="truncate">• {desc}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <button
                       onClick={confirmAction}
@@ -1382,7 +1425,7 @@ CÓMO RESPONDER:
                       className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 text-white text-xs font-medium rounded-lg transition-colors"
                     >
                       <CheckCircle size={14} />
-                      Confirmar
+                      {pendingAction.descriptions.length > 1 ? `Confirmar (${pendingAction.descriptions.length})` : 'Confirmar'}
                     </button>
                     <button
                       onClick={cancelAction}
