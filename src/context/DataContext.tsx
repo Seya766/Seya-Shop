@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { doc, setDoc, onSnapshot, writeBatch, waitForPendingWrites } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, writeBatch, waitForPendingWrites, enableNetwork, disableNetwork } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
@@ -103,11 +103,28 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   // Track unsubscribe functions for cleanup
   const unsubscribesRef = useRef<(() => void)[]>([]);
 
-  // Sync pending writes when coming back online
+  // Force Firebase to reconnect and sync fresh data
+  const forceSync = useCallback(async () => {
+    if (!navigator.onLine) return;
+    setSyncStatus('syncing');
+    try {
+      // Temporarily disable and re-enable network to force fresh sync
+      await disableNetwork(db);
+      await enableNetwork(db);
+      await waitForPendingWrites(db);
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Force sync error:', err);
+      setSyncStatus('pending');
+    }
+  }, []);
+
+  // Sync when coming back online or when tab becomes visible
   useEffect(() => {
     const handleOnline = async () => {
       setSyncStatus('syncing');
       try {
+        await enableNetwork(db);
         await waitForPendingWrites(db);
         setSyncStatus('synced');
       } catch {
@@ -115,9 +132,30 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
       }
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        // Force sync when user returns to the tab
+        forceSync();
+      }
+    };
+
+    const handleFocus = () => {
+      if (navigator.onLine) {
+        // Force sync when window gets focus
+        forceSync();
+      }
+    };
+
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
-  }, []);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [forceSync]);
 
   // Set up real-time listeners for all data
   useEffect(() => {
@@ -136,8 +174,14 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
       const tenantKey = getTenantKey(key, userId);
       const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
 
-      const unsub = onSnapshot(docRef, (snap) => {
+      // includeMetadataChanges ensures we get updates when data syncs from server
+      const unsub = onSnapshot(docRef, { includeMetadataChanges: true }, (snap) => {
+        const fromCache = snap.metadata.fromCache;
+        const hasPendingWrites = snap.metadata.hasPendingWrites;
+
+        // Always update state to ensure sync across devices
         isReceivingFromFirebase.current = true;
+
         if (snap.exists()) {
           let value = snap.data().value as T;
           if (transform) {
@@ -148,11 +192,22 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
           setter(defaultValue);
         }
         setLoading(false);
-        // Reset flag after state update
-        setTimeout(() => { isReceivingFromFirebase.current = false; }, 100);
+
+        // Update sync status
+        if (hasPendingWrites) {
+          setSyncStatus('syncing');
+        } else if (!fromCache) {
+          setSyncStatus('synced');
+        }
+
+        // Reset flag after React processes the state update
+        requestAnimationFrame(() => {
+          isReceivingFromFirebase.current = false;
+        });
       }, (error) => {
         console.error(`Error listening to ${key}:`, error);
         setLoading(false);
+        setSyncStatus('pending');
       });
 
       unsubscribesRef.current.push(unsub);
