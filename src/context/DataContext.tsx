@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { doc, setDoc, getDoc, writeBatch, waitForPendingWrites } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, writeBatch, waitForPendingWrites } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
@@ -8,6 +8,36 @@ import { getColombiaDateOnly } from '../utils/helpers';
 
 // Admin user ID - all data is stored under this path for Firebase permissions
 const ADMIN_USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
+
+// Helper to get the storage key with tenant prefix
+const getTenantKey = (baseKey: string, tenantId: string) => {
+  if (tenantId === ADMIN_USER_ID) {
+    return baseKey;
+  }
+  return `${tenantId}_${baseKey}`;
+};
+
+// Función para corregir integridad de facturas (recalcular abonos desde historial)
+const corregirIntegridadFacturas = (facturas: Factura[]): Factura[] => {
+  return facturas.map(f => {
+    const historial = f.historialAbonos || [];
+    if (historial.length === 0) return f;
+
+    const totalAbonado = historial.reduce((sum, h) => sum + (h.monto || 0), 0);
+    const cobro = f.cobroCliente || 0;
+    const abonoActual = f.abono || 0;
+
+    if (totalAbonado > abonoActual) {
+      return {
+        ...f,
+        abono: totalAbonado,
+        cobradoACliente: totalAbonado >= cobro
+      };
+    }
+
+    return f;
+  });
+};
 
 interface DataContextType {
   loading: boolean;
@@ -56,7 +86,7 @@ interface DataProviderProps {
 
 export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const [loading, setLoading] = useState(true);
-  
+
   const [facturas, setFacturasState] = useState<Factura[]>(DEFAULT_VALUES.facturas);
   const [revendedoresOcultos, setRevendedoresOcultosState] = useState<string[]>(DEFAULT_VALUES.revendedoresOcultos);
   const [pagosRevendedores, setPagosRevendedoresState] = useState<PagoRevendedor[]>(DEFAULT_VALUES.pagosRevendedores);
@@ -67,6 +97,11 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const [presupuestoMensual, setPresupuestoMensualState] = useState<number>(DEFAULT_VALUES.presupuestoMensual);
   const [facturasOcultas, setFacturasOcultasState] = useState<number[]>(DEFAULT_VALUES.facturasOcultas);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'pending'>('synced');
+
+  // Track if we're receiving data from Firebase to avoid saving loops
+  const isReceivingFromFirebase = useRef(false);
+  // Track unsubscribe functions for cleanup
+  const unsubscribesRef = useRef<(() => void)[]>([]);
 
   // Sync pending writes when coming back online
   useEffect(() => {
@@ -84,93 +119,68 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     return () => window.removeEventListener('online', handleOnline);
   }, []);
 
+  // Set up real-time listeners for all data
   useEffect(() => {
-    const init = async () => {
-      try {
-        await loadAllData(userId);
-      } catch (error) {
-        console.error('Error cargando datos:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-  }, [userId]);
+    if (!userId) return;
 
-  // Función para corregir integridad de facturas (recalcular abonos desde historial)
-  const corregirIntegridadFacturas = (facturas: Factura[]): Factura[] => {
-    return facturas.map(f => {
-      const historial = f.historialAbonos || [];
-      if (historial.length === 0) return f; // Sin historial = no tocar (pagos antiguos)
-      
-      // Recalcular abono desde historial
-      const totalAbonado = historial.reduce((sum, h) => sum + (h.monto || 0), 0);
-      const cobro = f.cobroCliente || 0;
-      const abonoActual = f.abono || 0;
-      
-      // Solo corregir si el historial tiene MÁS que el campo abono
-      // (no tocar si historial tiene menos, podría ser un pago parcial antiguo)
-      if (totalAbonado > abonoActual) {
-        console.log(`Corrigiendo factura ${f.cliente}: abono ${abonoActual} -> ${totalAbonado}`);
-        return {
-          ...f,
-          abono: totalAbonado,
-          cobradoACliente: totalAbonado >= cobro
-        };
-      }
-      
-      return f;
-    });
-  };
+    // Clean up previous listeners
+    unsubscribesRef.current.forEach(unsub => unsub());
+    unsubscribesRef.current = [];
 
-  // Helper to get the storage key with tenant prefix
-  // All data stored under ADMIN_USER_ID path for Firebase permissions
-  const getTenantKey = (baseKey: string, tenantId: string) => {
-    // For admin, use the base key directly (backwards compatible)
-    if (tenantId === ADMIN_USER_ID) {
-      return baseKey;
-    }
-    // For other tenants, prefix with their ID
-    return `${tenantId}_${baseKey}`;
-  };
+    const setupListener = <T,>(
+      key: string,
+      setter: React.Dispatch<React.SetStateAction<T>>,
+      defaultValue: T,
+      transform?: (value: T) => T
+    ) => {
+      const tenantKey = getTenantKey(key, userId);
+      const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
 
-  const loadAllData = async (uid: string) => {
-    const keys = [
-      { key: STORAGE_KEYS.FACTURAS, setter: setFacturasState, corregir: true },
-      { key: STORAGE_KEYS.REVENDEDORES_OCULTOS, setter: setRevendedoresOcultosState },
-      { key: STORAGE_KEYS.PAGOS_REVENDEDORES, setter: setPagosRevendedoresState },
-      { key: STORAGE_KEYS.GASTOS_FIJOS, setter: setGastosFijosState },
-      { key: STORAGE_KEYS.TRANSACCIONES, setter: setTransaccionesState },
-      { key: STORAGE_KEYS.META_AHORRO, setter: setMetaAhorroState },
-      { key: STORAGE_KEYS.METAS_FINANCIERAS, setter: setMetasFinancierasState },
-      { key: STORAGE_KEYS.PRESUPUESTO, setter: setPresupuestoMensualState },
-      { key: STORAGE_KEYS.FACTURAS_OCULTAS, setter: setFacturasOcultasState },
-    ];
-
-    await Promise.all(
-      keys.map(async ({ key, setter, corregir }) => {
-        try {
-          // All data stored under ADMIN path, with tenant-specific key prefix
-          const tenantKey = getTenantKey(key, uid);
-          const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
-          const snapshot = await getDoc(docRef);
-          if (snapshot.exists()) {
-            let value = snapshot.data().value;
-            // Corregir integridad de facturas si es necesario
-            if (corregir && key === STORAGE_KEYS.FACTURAS && Array.isArray(value)) {
-              value = corregirIntegridadFacturas(value);
-            }
-            setter(value);
+      const unsub = onSnapshot(docRef, (snap) => {
+        isReceivingFromFirebase.current = true;
+        if (snap.exists()) {
+          let value = snap.data().value as T;
+          if (transform) {
+            value = transform(value);
           }
-        } catch (error) {
-          console.error(`Error cargando ${key}:`, error);
+          setter(value);
+        } else {
+          setter(defaultValue);
         }
-      })
-    );
-  };
+        setLoading(false);
+        // Reset flag after state update
+        setTimeout(() => { isReceivingFromFirebase.current = false; }, 100);
+      }, (error) => {
+        console.error(`Error listening to ${key}:`, error);
+        setLoading(false);
+      });
+
+      unsubscribesRef.current.push(unsub);
+    };
+
+    // Set up listeners for all data types
+    setupListener(STORAGE_KEYS.FACTURAS, setFacturasState, DEFAULT_VALUES.facturas, corregirIntegridadFacturas);
+    setupListener(STORAGE_KEYS.REVENDEDORES_OCULTOS, setRevendedoresOcultosState, DEFAULT_VALUES.revendedoresOcultos);
+    setupListener(STORAGE_KEYS.PAGOS_REVENDEDORES, setPagosRevendedoresState, DEFAULT_VALUES.pagosRevendedores);
+    setupListener(STORAGE_KEYS.GASTOS_FIJOS, setGastosFijosState, DEFAULT_VALUES.gastosFijos);
+    setupListener(STORAGE_KEYS.TRANSACCIONES, setTransaccionesState, DEFAULT_VALUES.transacciones);
+    setupListener(STORAGE_KEYS.META_AHORRO, setMetaAhorroState, DEFAULT_VALUES.metaAhorro);
+    setupListener(STORAGE_KEYS.METAS_FINANCIERAS, setMetasFinancierasState, DEFAULT_VALUES.metasFinancieras);
+    setupListener(STORAGE_KEYS.PRESUPUESTO, setPresupuestoMensualState, DEFAULT_VALUES.presupuestoMensual);
+    setupListener(STORAGE_KEYS.FACTURAS_OCULTAS, setFacturasOcultasState, DEFAULT_VALUES.facturasOcultas);
+
+    // Cleanup on unmount
+    return () => {
+      unsubscribesRef.current.forEach(unsub => unsub());
+      unsubscribesRef.current = [];
+    };
+  }, [userId]);
 
   const saveToFirestore = useCallback(async (key: string, value: unknown) => {
     if (!userId) return;
+    // Don't save if we just received this data from Firebase (prevents loops)
+    if (isReceivingFromFirebase.current) return;
+
     setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
       // All data stored under ADMIN path, with tenant-specific key prefix

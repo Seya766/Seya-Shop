@@ -7,6 +7,9 @@ import { STORAGE_KEYS } from '../utils/constants';
 import { Download, RefreshCw, FileText, Clock, AlertCircle } from 'lucide-react';
 import type { Factura, PagoRevendedor } from '../utils/types';
 
+// Admin user ID - all data is stored under this path
+const ADMIN_USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
+
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
 
@@ -18,6 +21,14 @@ const fmtDate = (iso: string | null | undefined) => {
   } catch {
     return iso.slice(0, 10);
   }
+};
+
+// Helper to get the storage key with tenant prefix
+const getTenantKey = (baseKey: string, tenantId: string) => {
+  if (tenantId === ADMIN_USER_ID) {
+    return baseKey;
+  }
+  return `${tenantId}_${baseKey}`;
 };
 
 const ResellerPortal = () => {
@@ -44,8 +55,10 @@ const ResellerPortal = () => {
         }
 
         // Real-time listener for facturas (case-insensitive match)
+        // Data is stored under ADMIN_USER_ID path with tenant prefix
         const nameLower = name.toLowerCase();
-        const facturasRef = doc(db, 'users', tenantId, 'data', STORAGE_KEYS.FACTURAS);
+        const facturasKey = getTenantKey(STORAGE_KEYS.FACTURAS, tenantId);
+        const facturasRef = doc(db, 'users', ADMIN_USER_ID, 'data', facturasKey);
         unsubFacturas = onSnapshot(facturasRef, (snap) => {
           if (snap.exists()) {
             const all: Factura[] = snap.data().value || [];
@@ -60,7 +73,8 @@ const ResellerPortal = () => {
         });
 
         // Real-time listener for pagos (case-insensitive match)
-        const pagosRef = doc(db, 'users', tenantId, 'data', STORAGE_KEYS.PAGOS_REVENDEDORES);
+        const pagosKey = getTenantKey(STORAGE_KEYS.PAGOS_REVENDEDORES, tenantId);
+        const pagosRef = doc(db, 'users', ADMIN_USER_ID, 'data', pagosKey);
         unsubPagos = onSnapshot(pagosRef, (snap) => {
           if (snap.exists()) {
             const all: PagoRevendedor[] = snap.data().value || [];
