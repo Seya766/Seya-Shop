@@ -401,11 +401,35 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
     const totalGastosFijos = gastosFijos.reduce((sum, g) => sum + (g.monto || 0), 0);
     const gastosFijosPendientes = gastosFijos.filter(g => !g.pagadoEsteMes);
 
+    // Date helpers for daily data
+    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    // Weekly data (last 7 days)
+    const last7Days: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      last7Days.push(d.toISOString().split('T')[0]);
+    }
+
     // Monthly data
     const facturasEsteMes = facturasVisibles.filter(f => f.fechaISO?.startsWith(currentMonth));
     const facturasMesPasado = facturasVisibles.filter(f => f.fechaISO?.startsWith(prevMonth));
     const transEsteMes = transacciones.filter(t => t.fecha?.startsWith(currentMonth));
     const transMesPasado = transacciones.filter(t => t.fecha?.startsWith(prevMonth));
+
+    // Daily data
+    const facturasHoy = facturasVisibles.filter(f => f.fechaISO?.startsWith(todayStr));
+    const facturasAyer = facturasVisibles.filter(f => f.fechaISO?.startsWith(yesterdayStr));
+    const transHoy = transacciones.filter(t => t.fecha?.startsWith(todayStr));
+    const transAyer = transacciones.filter(t => t.fecha?.startsWith(yesterdayStr));
+
+    // Last 7 days
+    const facturas7Dias = facturasVisibles.filter(f => last7Days.some(d => f.fechaISO?.startsWith(d)));
+    const trans7Dias = transacciones.filter(t => last7Days.some(d => t.fecha?.startsWith(d)));
 
     const calc = (fs: typeof facturasVisibles) => ({
       count: fs.length,
@@ -420,6 +444,9 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
 
     const mesActual = { ...calc(facturasEsteMes), ...calcTx(transEsteMes) };
     const mesPasado = { ...calc(facturasMesPasado), ...calcTx(transMesPasado) };
+    const diaHoy = { ...calc(facturasHoy), ...calcTx(transHoy) };
+    const diaAyer = { ...calc(facturasAyer), ...calcTx(transAyer) };
+    const semana = { ...calc(facturas7Dias), ...calcTx(trans7Dias) };
 
     // Build structured data object
     const data = {
@@ -458,6 +485,32 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
         ingresos_extra: mesPasado.ingresos,
         gastos: mesPasado.gastos,
         balance_total: mesPasado.ganancia + mesPasado.ingresos - mesPasado.gastos,
+      },
+      hoy: {
+        fecha: todayStr,
+        facturas_creadas: diaHoy.count,
+        ventas: diaHoy.ventas,
+        ganancia_bruta: diaHoy.ganancia,
+        ingresos_extra: diaHoy.ingresos,
+        gastos: diaHoy.gastos,
+        balance: diaHoy.ganancia + diaHoy.ingresos - diaHoy.gastos,
+      },
+      ayer: {
+        fecha: yesterdayStr,
+        facturas_creadas: diaAyer.count,
+        ventas: diaAyer.ventas,
+        ganancia_bruta: diaAyer.ganancia,
+        ingresos_extra: diaAyer.ingresos,
+        gastos: diaAyer.gastos,
+        balance: diaAyer.ganancia + diaAyer.ingresos - diaAyer.gastos,
+      },
+      ultimos_7_dias: {
+        facturas_creadas: semana.count,
+        ventas: semana.ventas,
+        ganancia_bruta: semana.ganancia,
+        ingresos_extra: semana.ingresos,
+        gastos: semana.gastos,
+        balance: semana.ganancia + semana.ingresos - semana.gastos,
       },
       deudores: Object.entries(
         pendientesCobro.reduce((acc, f) => {
@@ -554,6 +607,60 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
         fecha: p.fecha, revendedor: p.revendedor,
         monto: p.montoTotal, nota: p.nota || null,
       })),
+      // Ranking de servicios/productos más vendidos
+      ranking_servicios: Object.entries(
+        facturasVisibles.reduce((acc, f) => {
+          const key = f.empresa || 'Sin servicio';
+          if (!acc[key]) acc[key] = { count: 0, total: 0, ganancia: 0 };
+          acc[key].count++;
+          acc[key].total += f.cobroCliente || 0;
+          acc[key].ganancia += (f.cobroCliente || 0) - (f.costoInicial || 0);
+          return acc;
+        }, {} as Record<string, { count: number; total: number; ganancia: number }>)
+      ).map(([servicio, data]) => ({
+        servicio,
+        cantidad_ventas: data.count,
+        total_vendido: data.total,
+        ganancia_total: data.ganancia,
+      })).sort((a, b) => b.cantidad_ventas - a.cantidad_ventas).slice(0, 15),
+      // Resumen por revendedor
+      resumen_revendedores: Object.entries(
+        facturasVisibles.reduce((acc, f) => {
+          const key = f.revendedor || 'Directo';
+          if (!acc[key]) acc[key] = { count: 0, total: 0, cobrado: 0, pendiente: 0 };
+          acc[key].count++;
+          acc[key].total += f.cobroCliente || 0;
+          if (f.cobradoACliente) {
+            acc[key].cobrado += f.cobroCliente || 0;
+          } else {
+            acc[key].pendiente += (f.cobroCliente || 0) - (f.abono || 0);
+          }
+          return acc;
+        }, {} as Record<string, { count: number; total: number; cobrado: number; pendiente: number }>)
+      ).map(([revendedor, data]) => ({
+        revendedor,
+        facturas_totales: data.count,
+        total_vendido: data.total,
+        total_cobrado: data.cobrado,
+        pendiente_cobro: data.pendiente,
+      })).sort((a, b) => b.total_vendido - a.total_vendido),
+      // Gastos por categoría este mes
+      gastos_por_categoria: Object.entries(
+        transEsteMes.filter(t => t.tipo === 'gasto').reduce((acc, t) => {
+          const key = t.categoria || 'otros';
+          acc[key] = (acc[key] || 0) + t.monto;
+          return acc;
+        }, {} as Record<string, number>)
+      ).map(([categoria, monto]) => ({ categoria, monto }))
+        .sort((a, b) => b.monto - a.monto),
+      // Totales históricos (todas las facturas)
+      historico_total: {
+        facturas_totales: facturasVisibles.length,
+        ventas_totales: facturasVisibles.reduce((s, f) => s + (f.cobroCliente || 0), 0),
+        ganancia_total: facturasVisibles.reduce((s, f) => s + ((f.cobroCliente || 0) - (f.costoInicial || 0)), 0),
+        facturas_cobradas: facturasVisibles.filter(f => f.cobradoACliente).length,
+        facturas_pendientes: facturasVisibles.filter(f => !f.cobradoACliente).length,
+      },
     };
 
     const shopName = currentTenant?.shopName || 'Seya Shop';
