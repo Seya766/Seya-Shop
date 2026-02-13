@@ -102,6 +102,8 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const isReceivingFromFirebase = useRef(false);
   // Track unsubscribe functions for cleanup
   const unsubscribesRef = useRef<(() => void)[]>([]);
+  // Track if listeners are currently being set up (prevents duplicate listeners in StrictMode)
+  const isSettingUpListeners = useRef(false);
 
   // Force Firebase to reconnect and sync fresh data
   const forceSync = useCallback(async () => {
@@ -160,6 +162,10 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   // Set up real-time listeners for all data
   useEffect(() => {
     if (!userId) return;
+
+    // Prevent duplicate listeners (React StrictMode calls useEffect twice)
+    if (isSettingUpListeners.current) return;
+    isSettingUpListeners.current = true;
 
     // Clean up previous listeners
     unsubscribesRef.current.forEach(unsub => unsub());
@@ -224,10 +230,11 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     setupListener(STORAGE_KEYS.PRESUPUESTO, setPresupuestoMensualState, DEFAULT_VALUES.presupuestoMensual);
     setupListener(STORAGE_KEYS.FACTURAS_OCULTAS, setFacturasOcultasState, DEFAULT_VALUES.facturasOcultas);
 
-    // Cleanup on unmount
+    // Cleanup on unmount or userId change
     return () => {
       unsubscribesRef.current.forEach(unsub => unsub());
       unsubscribesRef.current = [];
+      isSettingUpListeners.current = false;
     };
   }, [userId]);
 
