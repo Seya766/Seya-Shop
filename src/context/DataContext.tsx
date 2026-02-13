@@ -1,10 +1,43 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { doc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
-import { db, initAuth } from '../firebase/config';
+import { doc, setDoc, onSnapshot, writeBatch, waitForPendingWrites, enableNetwork, disableNetwork } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
 import { getColombiaDateOnly } from '../utils/helpers';
+
+// Admin user ID - all data is stored under this path for Firebase permissions
+const ADMIN_USER_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
+
+// Helper to get the storage key with tenant prefix
+const getTenantKey = (baseKey: string, tenantId: string) => {
+  if (tenantId === ADMIN_USER_ID) {
+    return baseKey;
+  }
+  return `${tenantId}_${baseKey}`;
+};
+
+// Función para corregir integridad de facturas (recalcular abonos desde historial)
+const corregirIntegridadFacturas = (facturas: Factura[]): Factura[] => {
+  return facturas.map(f => {
+    const historial = f.historialAbonos || [];
+    if (historial.length === 0) return f;
+
+    const totalAbonado = historial.reduce((sum, h) => sum + (h.monto || 0), 0);
+    const cobro = f.cobroCliente || 0;
+    const abonoActual = f.abono || 0;
+
+    if (totalAbonado > abonoActual) {
+      return {
+        ...f,
+        abono: totalAbonado,
+        cobradoACliente: totalAbonado >= cobro
+      };
+    }
+
+    return f;
+  });
+};
 
 interface DataContextType {
   loading: boolean;
@@ -27,6 +60,7 @@ interface DataContextType {
   setPresupuestoMensual: (value: number | ((prev: number) => number)) => void;
   facturasOcultas: number[];
   setFacturasOcultas: (value: number[] | ((prev: number[]) => number[])) => void;
+  syncStatus: 'synced' | 'syncing' | 'pending';
   descargarBackup: () => void;
   importarBackup: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
@@ -45,10 +79,14 @@ const DEFAULT_VALUES = {
   facturasOcultas: [] as number[]
 };
 
-export const DataProvider = ({ children }: { children: ReactNode }) => {
-  const [userId, setUserId] = useState<string | null>(null);
+interface DataProviderProps {
+  children: ReactNode;
+  userId: string;
+}
+
+export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const [loading, setLoading] = useState(true);
-  
+
   const [facturas, setFacturasState] = useState<Factura[]>(DEFAULT_VALUES.facturas);
   const [revendedoresOcultos, setRevendedoresOcultosState] = useState<string[]>(DEFAULT_VALUES.revendedoresOcultos);
   const [pagosRevendedores, setPagosRevendedoresState] = useState<PagoRevendedor[]>(DEFAULT_VALUES.pagosRevendedores);
@@ -58,88 +96,165 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [metasFinancieras, setMetasFinancierasState] = useState<MetaFinanciera[]>(DEFAULT_VALUES.metasFinancieras);
   const [presupuestoMensual, setPresupuestoMensualState] = useState<number>(DEFAULT_VALUES.presupuestoMensual);
   const [facturasOcultas, setFacturasOcultasState] = useState<number[]>(DEFAULT_VALUES.facturasOcultas);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'pending'>('synced');
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const uid = await initAuth();
-        setUserId(uid);
-        await loadAllData(uid);
-      } catch (error) {
-        console.error('Error inicializando Firebase:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
+  // Track if we're receiving data from Firebase to avoid saving loops
+  const isReceivingFromFirebase = useRef(false);
+  // Track unsubscribe functions for cleanup
+  const unsubscribesRef = useRef<(() => void)[]>([]);
+  // Track if listeners are currently being set up (prevents duplicate listeners in StrictMode)
+  const isSettingUpListeners = useRef(false);
+
+  // Force Firebase to reconnect and sync fresh data
+  const forceSync = useCallback(async () => {
+    if (!navigator.onLine) return;
+    setSyncStatus('syncing');
+    try {
+      // Temporarily disable and re-enable network to force fresh sync
+      await disableNetwork(db);
+      await enableNetwork(db);
+      await waitForPendingWrites(db);
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error('Force sync error:', err);
+      setSyncStatus('pending');
+    }
   }, []);
 
-  // Función para corregir integridad de facturas (recalcular abonos desde historial)
-  const corregirIntegridadFacturas = (facturas: Factura[]): Factura[] => {
-    return facturas.map(f => {
-      const historial = f.historialAbonos || [];
-      if (historial.length === 0) return f; // Sin historial = no tocar (pagos antiguos)
-      
-      // Recalcular abono desde historial
-      const totalAbonado = historial.reduce((sum, h) => sum + (h.monto || 0), 0);
-      const cobro = f.cobroCliente || 0;
-      const abonoActual = f.abono || 0;
-      
-      // Solo corregir si el historial tiene MÁS que el campo abono
-      // (no tocar si historial tiene menos, podría ser un pago parcial antiguo)
-      if (totalAbonado > abonoActual) {
-        console.log(`Corrigiendo factura ${f.cliente}: abono ${abonoActual} -> ${totalAbonado}`);
-        return {
-          ...f,
-          abono: totalAbonado,
-          cobradoACliente: totalAbonado >= cobro
-        };
+  // Sync when coming back online or when tab becomes visible
+  useEffect(() => {
+    const handleOnline = async () => {
+      setSyncStatus('syncing');
+      try {
+        await enableNetwork(db);
+        await waitForPendingWrites(db);
+        setSyncStatus('synced');
+      } catch {
+        setSyncStatus('pending');
       }
-      
-      return f;
-    });
-  };
+    };
 
-  const loadAllData = async (uid: string) => {
-    const keys = [
-      { key: STORAGE_KEYS.FACTURAS, setter: setFacturasState, corregir: true },
-      { key: STORAGE_KEYS.REVENDEDORES_OCULTOS, setter: setRevendedoresOcultosState },
-      { key: STORAGE_KEYS.PAGOS_REVENDEDORES, setter: setPagosRevendedoresState },
-      { key: STORAGE_KEYS.GASTOS_FIJOS, setter: setGastosFijosState },
-      { key: STORAGE_KEYS.TRANSACCIONES, setter: setTransaccionesState },
-      { key: STORAGE_KEYS.META_AHORRO, setter: setMetaAhorroState },
-      { key: STORAGE_KEYS.METAS_FINANCIERAS, setter: setMetasFinancierasState },
-      { key: STORAGE_KEYS.PRESUPUESTO, setter: setPresupuestoMensualState },
-      { key: STORAGE_KEYS.FACTURAS_OCULTAS, setter: setFacturasOcultasState },
-    ];
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        // Force sync when user returns to the tab
+        forceSync();
+      }
+    };
 
-    await Promise.all(
-      keys.map(async ({ key, setter, corregir }) => {
-        try {
-          const docRef = doc(db, 'users', uid, 'data', key);
-          const snapshot = await getDoc(docRef);
-          if (snapshot.exists()) {
-            let value = snapshot.data().value;
-            // Corregir integridad de facturas si es necesario
-            if (corregir && key === STORAGE_KEYS.FACTURAS && Array.isArray(value)) {
-              value = corregirIntegridadFacturas(value);
-            }
-            setter(value);
+    const handleFocus = () => {
+      if (navigator.onLine) {
+        // Force sync when window gets focus
+        forceSync();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [forceSync]);
+
+  // Set up real-time listeners for all data
+  useEffect(() => {
+    if (!userId) return;
+
+    // Prevent duplicate listeners (React StrictMode calls useEffect twice)
+    if (isSettingUpListeners.current) return;
+    isSettingUpListeners.current = true;
+
+    // Clean up previous listeners
+    unsubscribesRef.current.forEach(unsub => unsub());
+    unsubscribesRef.current = [];
+
+    const setupListener = <T,>(
+      key: string,
+      setter: React.Dispatch<React.SetStateAction<T>>,
+      defaultValue: T,
+      transform?: (value: T) => T
+    ) => {
+      const tenantKey = getTenantKey(key, userId);
+      const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
+
+      // includeMetadataChanges ensures we get updates when data syncs from server
+      const unsub = onSnapshot(docRef, { includeMetadataChanges: true }, (snap) => {
+        const fromCache = snap.metadata.fromCache;
+        const hasPendingWrites = snap.metadata.hasPendingWrites;
+
+        // Always update state to ensure sync across devices
+        isReceivingFromFirebase.current = true;
+
+        if (snap.exists()) {
+          let value = snap.data().value as T;
+          if (transform) {
+            value = transform(value);
           }
-        } catch (error) {
-          console.error(`Error cargando ${key}:`, error);
+          setter(value);
+        } else {
+          setter(defaultValue);
         }
-      })
-    );
-  };
+        setLoading(false);
+
+        // Update sync status
+        if (hasPendingWrites) {
+          setSyncStatus('syncing');
+        } else if (!fromCache) {
+          setSyncStatus('synced');
+        }
+
+        // Reset flag after React processes the state update
+        requestAnimationFrame(() => {
+          isReceivingFromFirebase.current = false;
+        });
+      }, (error) => {
+        console.error(`Error listening to ${key}:`, error);
+        setLoading(false);
+        setSyncStatus('pending');
+      });
+
+      unsubscribesRef.current.push(unsub);
+    };
+
+    // Set up listeners for all data types
+    setupListener(STORAGE_KEYS.FACTURAS, setFacturasState, DEFAULT_VALUES.facturas, corregirIntegridadFacturas);
+    setupListener(STORAGE_KEYS.REVENDEDORES_OCULTOS, setRevendedoresOcultosState, DEFAULT_VALUES.revendedoresOcultos);
+    setupListener(STORAGE_KEYS.PAGOS_REVENDEDORES, setPagosRevendedoresState, DEFAULT_VALUES.pagosRevendedores);
+    setupListener(STORAGE_KEYS.GASTOS_FIJOS, setGastosFijosState, DEFAULT_VALUES.gastosFijos);
+    setupListener(STORAGE_KEYS.TRANSACCIONES, setTransaccionesState, DEFAULT_VALUES.transacciones);
+    setupListener(STORAGE_KEYS.META_AHORRO, setMetaAhorroState, DEFAULT_VALUES.metaAhorro);
+    setupListener(STORAGE_KEYS.METAS_FINANCIERAS, setMetasFinancierasState, DEFAULT_VALUES.metasFinancieras);
+    setupListener(STORAGE_KEYS.PRESUPUESTO, setPresupuestoMensualState, DEFAULT_VALUES.presupuestoMensual);
+    setupListener(STORAGE_KEYS.FACTURAS_OCULTAS, setFacturasOcultasState, DEFAULT_VALUES.facturasOcultas);
+
+    // Cleanup on unmount or userId change
+    return () => {
+      unsubscribesRef.current.forEach(unsub => unsub());
+      unsubscribesRef.current = [];
+      isSettingUpListeners.current = false;
+    };
+  }, [userId]);
 
   const saveToFirestore = useCallback(async (key: string, value: unknown) => {
     if (!userId) return;
+    // Don't save if we just received this data from Firebase (prevents loops)
+    if (isReceivingFromFirebase.current) return;
+
+    setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
-      const docRef = doc(db, 'users', userId, 'data', key);
+      // All data stored under ADMIN path, with tenant-specific key prefix
+      const tenantKey = userId === ADMIN_USER_ID ? key : `${userId}_${key}`;
+      const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
       await setDoc(docRef, { value, updatedAt: new Date().toISOString() });
+      if (navigator.onLine) {
+        setSyncStatus('synced');
+      }
     } catch (error) {
       console.error(`Error guardando ${key}:`, error);
+      setSyncStatus('pending');
     }
   }, [userId]);
 
@@ -267,7 +382,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
             ];
 
             updates.forEach(({ key, value }) => {
-              const docRef = doc(db, 'users', userId, 'data', key);
+              // All data stored under ADMIN path, with tenant-specific key prefix
+              const tenantKey = userId === ADMIN_USER_ID ? key : `${userId}_${key}`;
+              const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
               batch.set(docRef, { value, updatedAt: new Date().toISOString() });
             });
 
@@ -307,6 +424,7 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       metasFinancieras, setMetasFinancieras,
       presupuestoMensual, setPresupuestoMensual,
       facturasOcultas, setFacturasOcultas,
+      syncStatus,
       descargarBackup, importarBackup,
     }}>
       {children}

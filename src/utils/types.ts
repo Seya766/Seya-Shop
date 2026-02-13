@@ -24,10 +24,13 @@ export interface HistorialGarantia {
   resolucion?: string; // 'reposicion' | 'devolucion' | 'reparacion'
 }
 
+export type PlataformaMensajeria = 'whatsapp' | 'telegram';
+
 export interface Factura {
   id: number;
   cliente: string;
   telefono: string;
+  plataforma?: PlataformaMensajeria; // whatsapp o telegram
   revendedor: string;
   empresa: string;
   montoFactura: number;
@@ -206,3 +209,16 @@ export interface CategoriaConfig {
 }
 
 export type CategoriasGastoConfig = Record<CategoriaGasto, CategoriaConfig>;
+
+// =============================================
+// TIPOS DE MULTI-TENANT
+// =============================================
+
+export interface Tenant {
+  pin: string;
+  userId: string;
+  name: string;
+  shopName: string; // Nombre de la tienda (ej: "Seya Shop", "Adri Telecom")
+  isAdmin: boolean;
+  createdAt: string;
+}

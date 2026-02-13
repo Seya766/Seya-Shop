@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { 
-  Plus, Trash2, Check, DollarSign, AlertTriangle, ShieldAlert, ShieldCheck, 
+import {
+  Plus, Trash2, Check, DollarSign, AlertTriangle, ShieldAlert, ShieldCheck,
   Search, RefreshCw, Percent, Pencil, Save, X, Download,
   Users, Briefcase, ClipboardList, Calendar, TrendingUp, Clock, CalendarClock,
   Eye, EyeOff, Wallet, MessageCircle, Target, BarChart3, History,
   Award, Flame, Activity, Sparkles, Crown, ArrowUpRight, ArrowDownRight,
-  Layers, CircleDollarSign, List, Zap, FileText, ChevronDown, ArrowUpDown
+  Layers, CircleDollarSign, List, Zap, FileText, ChevronDown, ArrowUpDown, Link2
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { useTenant } from '../context/TenantContext';
 import { META_MENSUAL_NEGOCIO, COLORES_RANKING } from '../utils/constants';
 import { 
   formatearDinero, formatearDineroCorto, getColombiaDateOnly, 
@@ -290,74 +291,107 @@ const FacturaCard = memo(({
               </div>
             </div>
 
-            <div className="flex items-center gap-3 self-end sm:self-center flex-shrink-0">
-              {/* Botón de pago al proveedor con soporte para abonos */}
-              <div className="flex flex-col items-center">
-                {!f.pagadoAProveedor ? (
-                  <div className="flex gap-1">
-                    <MagneticButton 
-                      onClick={() => onTogglePago(f.id)} 
-                      className="p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10"
-                      title="Marcar como pagado completo"
-                    >
-                      <Check size={20} />
-                    </MagneticButton>
-                    <MagneticButton 
-                      onClick={() => onAbonoProveedor(f)} 
-                      className="p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-blue-400 hover:border-blue-500/50 hover:bg-blue-500/10"
-                      title="Registrar abono parcial"
-                    >
-                      <DollarSign size={20} />
-                    </MagneticButton>
-                  </div>
-                ) : (
-                  <MagneticButton 
-                    onClick={() => onTogglePago(f.id)} 
-                    className="p-3 rounded-xl border transition-colors bg-gradient-to-br from-blue-600 to-indigo-600 border-blue-500 text-white shadow-lg shadow-blue-500/30"
-                    title="Desmarcar pago"
-                  >
-                    <DollarSign size={20} />
-                  </MagneticButton>
-                )}
-                {/* Progreso de pago al proveedor */}
-                {tieneAbonoProveedor && (
-                  <div className="mt-2 w-full">
-                    <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(abonoProveedorActual / f.montoFactura) * 100}%` }}
-                      />
-                    </div>
-                    <p className="text-[8px] text-yellow-400 text-center mt-0.5">
-                      {formatearDinero(abonoProveedorActual)} / {formatearDinero(f.montoFactura)}
-                    </p>
-                  </div>
-                )}
+            {/* Mobile: Stack vertically, Desktop: Horizontal */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto sm:self-center flex-shrink-0">
+              {/* Ganancia - First on mobile for visibility */}
+              <div className="flex sm:hidden items-center justify-between bg-gray-800/30 rounded-xl p-3 border border-gray-700/30">
+                <p className="text-[10px] text-gray-500 uppercase font-bold">Ganancia</p>
+                <p className="text-xl font-bold font-mono text-white">{formatearDinero(f.cobroCliente)}</p>
               </div>
-              
-              {!f.cobradoACliente && (
-                <MagneticButton 
-                  onClick={() => onEnviarRecordatorio(f)} 
-                  className="p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 transition-colors"
-                >
-                  <MessageCircle size={20} />
-                </MagneticButton>
+
+              {/* Abono progress bar on mobile */}
+              {f.abono > 0 && !f.cobradoACliente && (
+                <div className="sm:hidden">
+                  <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500"
+                      style={{ width: `${(f.abono / f.cobroCliente) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-[9px] text-orange-400 text-right mt-1">Resta: {formatearDinero(saldoPendiente)}</p>
+                </div>
               )}
 
-              <MagneticButton 
-                onClick={() => onIniciarCobro(f)} 
-                className={`px-5 py-3 rounded-xl flex items-center gap-2 font-bold text-sm border transition-colors ${f.cobradoACliente ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-gray-700/50 border-gray-600/50 text-white hover:bg-gray-600/50'}`}
-              >
-                {f.cobradoACliente ? <Check size={18} /> : <span>Cobrar</span>}
-              </MagneticButton>
+              {/* Buttons row */}
+              <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
+                {/* Botón de pago al proveedor con soporte para abonos */}
+                <div className="flex flex-col items-center">
+                  {!f.pagadoAProveedor ? (
+                    <div className="flex gap-1">
+                      <MagneticButton
+                        onClick={() => onTogglePago(f.id)}
+                        className="p-2.5 sm:p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10"
+                        title="Marcar como pagado completo"
+                      >
+                        <Check size={18} className="sm:w-5 sm:h-5" />
+                      </MagneticButton>
+                      <MagneticButton
+                        onClick={() => onAbonoProveedor(f)}
+                        className="p-2.5 sm:p-3 rounded-xl border transition-colors bg-gray-800/50 border-gray-700/50 text-gray-500 hover:text-blue-400 hover:border-blue-500/50 hover:bg-blue-500/10"
+                        title="Registrar abono parcial"
+                      >
+                        <DollarSign size={18} className="sm:w-5 sm:h-5" />
+                      </MagneticButton>
+                    </div>
+                  ) : (
+                    <MagneticButton
+                      onClick={() => onTogglePago(f.id)}
+                      className="p-2.5 sm:p-3 rounded-xl border transition-colors bg-gradient-to-br from-blue-600 to-indigo-600 border-blue-500 text-white shadow-lg shadow-blue-500/30"
+                      title="Desmarcar pago"
+                    >
+                      <DollarSign size={18} className="sm:w-5 sm:h-5" />
+                    </MagneticButton>
+                  )}
+                  {/* Progreso de pago al proveedor */}
+                  {tieneAbonoProveedor && (
+                    <div className="mt-1.5 sm:mt-2 w-full">
+                      <div className="h-1 sm:h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full transition-all duration-500"
+                          style={{ width: `${(abonoProveedorActual / f.montoFactura) * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-[7px] sm:text-[8px] text-yellow-400 text-center mt-0.5">
+                        {formatearDineroCorto(abonoProveedorActual)} / {formatearDineroCorto(f.montoFactura)}
+                      </p>
+                    </div>
+                  )}
+                </div>
 
-              <div className="text-right ml-2 min-w-[100px]">
+                {!f.cobradoACliente && (
+                  <MagneticButton
+                    onClick={() => onEnviarRecordatorio(f)}
+                    className={`p-2.5 sm:p-3 rounded-xl border transition-colors ${
+                      f.plataforma === 'telegram'
+                        ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
+                        : 'bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20'
+                    }`}
+                    title={f.plataforma === 'telegram' ? 'Enviar por Telegram' : 'Enviar por WhatsApp'}
+                  >
+                    {f.plataforma === 'telegram' ? (
+                      <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] sm:w-5 sm:h-5 fill-current"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] sm:w-5 sm:h-5 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    )}
+                  </MagneticButton>
+                )}
+
+                <MagneticButton
+                  onClick={() => onIniciarCobro(f)}
+                  className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl flex items-center gap-2 font-bold text-xs sm:text-sm border transition-colors ${f.cobradoACliente ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-gray-700/50 border-gray-600/50 text-white hover:bg-gray-600/50'}`}
+                >
+                  {f.cobradoACliente ? <Check size={16} className="sm:w-[18px] sm:h-[18px]" /> : <span>Cobrar</span>}
+                </MagneticButton>
+              </div>
+
+              {/* Ganancia - Desktop only */}
+              <div className="hidden sm:block text-right ml-2 min-w-[100px]">
                 <p className="text-[10px] text-gray-500 uppercase font-bold">Ganancia</p>
                 <p className="text-2xl font-bold font-mono text-white">{formatearDinero(f.cobroCliente)}</p>
                 {f.abono > 0 && !f.cobradoACliente && (
                   <div className="mt-2">
                     <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500"
                         style={{ width: `${(f.abono / f.cobroCliente) * 100}%` }}
                       />
@@ -460,7 +494,8 @@ FacturaCard.displayName = 'FacturaCard';
 // MAIN COMPONENT
 // =============================================
 const NegocioPage = () => {
-  const { facturas, setFacturas, revendedoresOcultos, setRevendedoresOcultos, pagosRevendedores, setPagosRevendedores, facturasOcultas, setFacturasOcultas } = useData();
+  const { facturas, setFacturas, revendedoresOcultos, setRevendedoresOcultos, pagosRevendedores, setPagosRevendedores, facturasOcultas, setFacturasOcultas, userId } = useData();
+  const { currentTenant } = useTenant();
 
   // Toggle para mostrar/ocultar facturas ocultas en la lista
   const [mostrarOcultas, setMostrarOcultas] = useState(false);
@@ -469,7 +504,7 @@ const NegocioPage = () => {
   // ESTADOS UI
   // =============================================
   const [form, setForm] = useState({
-    cliente: '', telefono: '', revendedor: '', empresa: '',
+    cliente: '', telefono: '', plataforma: 'whatsapp' as 'whatsapp' | 'telegram', revendedor: '', empresa: '',
     montoFactura: '', porcentajeCobro: 50, cobroCliente: '',
   });
 
@@ -521,6 +556,9 @@ const NegocioPage = () => {
 
   // Referencia para rastrear el día del sistema (no la selección del usuario)
   const ultimoDiaSistema = useRef(getColombiaDateOnly());
+
+  // Referencia para rastrear qué campo editó el usuario (porcentaje o cobro)
+  const ultimoCampoEditado = useRef<'porcentaje' | 'cobro' | null>(null);
 
   // Efecto para actualizar automáticamente solo cuando cambia el día del SISTEMA (medianoche)
   useEffect(() => {
@@ -626,17 +664,38 @@ const NegocioPage = () => {
   // =============================================
   // EFECTOS (optimizados)
   // =============================================
+  // Calcular cobro cuando cambia monto o porcentaje (solo si el usuario editó el porcentaje)
   useEffect(() => {
+    if (ultimoCampoEditado.current === 'cobro') return; // No recalcular si el usuario editó el cobro
+
     if (form.montoFactura && form.porcentajeCobro) {
       const montoStr = String(form.montoFactura).replace(/[^0-9]/g, '');
       const monto = parseFloat(montoStr);
       const porcent = parseFloat(String(form.porcentajeCobro));
-      if (!isNaN(monto) && !isNaN(porcent)) {
+      if (!isNaN(monto) && !isNaN(porcent) && monto > 0) {
         const calculo = Math.round(monto * (porcent / 100));
         setForm(prev => ({ ...prev, cobroCliente: String(calculo) }));
       }
     }
   }, [form.montoFactura, form.porcentajeCobro]);
+
+  // Calcular porcentaje cuando el usuario edita el cobro manualmente
+  useEffect(() => {
+    if (ultimoCampoEditado.current !== 'cobro') return; // Solo ejecutar si el usuario editó el cobro
+
+    if (form.montoFactura && form.cobroCliente) {
+      const montoStr = String(form.montoFactura).replace(/[^0-9]/g, '');
+      const cobroStr = String(form.cobroCliente).replace(/[^0-9]/g, '');
+      const monto = parseFloat(montoStr);
+      const cobro = parseFloat(cobroStr);
+      if (!isNaN(monto) && !isNaN(cobro) && monto > 0) {
+        // Calcular porcentaje con más precisión (1 decimal)
+        const porcentajeCalculado = Math.round((cobro / monto) * 1000) / 10;
+        setForm(prev => ({ ...prev, porcentajeCobro: porcentajeCalculado }));
+      }
+    }
+    // NO resetear aquí - mantener 'cobro' para que el primer effect no sobrescriba
+  }, [form.cobroCliente]);
 
   // =============================================
   // HELPERS LOCALES (memoizados)
@@ -1016,6 +1075,7 @@ const NegocioPage = () => {
       id: Date.now(),
       cliente: form.cliente,
       telefono: form.telefono,
+      plataforma: form.plataforma,
       revendedor: form.revendedor || 'Directo',
       empresa: form.empresa,
       montoFactura: monto,
@@ -1369,10 +1429,38 @@ const NegocioPage = () => {
 
   const enviarRecordatorio = useCallback((f: Factura) => {
     const saldo = f.cobroCliente - (f.abono || 0);
-    const mensaje = `Hola ${f.cliente}, te escribo de Seya Shop para recordarte el saldo pendiente de ${formatearDinero(saldo)} por el servicio de ${f.empresa}. Quedo atento/a, gracias!`;
-    const url = f.telefono ? `https://wa.me/57${f.telefono}?text=${encodeURIComponent(mensaje)}` : `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    window.open(url, '_blank');
-  }, []);
+    const shopName = currentTenant?.shopName || 'la tienda';
+    const mensaje = `¡Hola ${f.cliente}! 👋
+
+Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${formatearDinero(saldo)}* por tu servicio de *${f.empresa}*.
+
+¿Cuándo podrías realizar el pago? 🙏
+
+¡Gracias!`;
+
+    const plataforma = f.plataforma || 'whatsapp';
+    const telefono = f.telefono?.replace(/\D/g, '') || '';
+
+    if (plataforma === 'telegram') {
+      // Para Telegram usamos el deep link
+      const telegramUrl = telefono
+        ? `https://t.me/+57${telefono}`
+        : 'https://t.me/';
+      // Copiamos el mensaje al portapapeles y abrimos Telegram
+      navigator.clipboard.writeText(mensaje).then(() => {
+        alert('Mensaje copiado al portapapeles. Se abrirá Telegram.');
+        window.open(telegramUrl, '_blank');
+      }).catch(() => {
+        window.open(telegramUrl, '_blank');
+      });
+    } else {
+      // WhatsApp
+      const waUrl = telefono
+        ? `https://wa.me/57${telefono}?text=${encodeURIComponent(mensaje)}`
+        : `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
+      window.open(waUrl, '_blank');
+    }
+  }, [currentTenant?.shopName]);
 
   // =============================================
   // FUNCIÓN MEJORADA: DESCARGAR ESTADO DE CUENTA
@@ -1968,6 +2056,17 @@ const NegocioPage = () => {
   const abrirHistorialPagos = useCallback((nombre: string) => {
     setModalHistorialPagos({ visible: true, nombre });
   }, []);
+
+  const copiarLinkPortal = useCallback((nombre: string) => {
+    if (!userId) return;
+    const baseUrl = window.location.origin;
+    const url = `${baseUrl}/v/${encodeURIComponent(userId)}/${encodeURIComponent(nombre.toLowerCase())}`;
+    navigator.clipboard.writeText(url).then(() => {
+      alert(`Link copiado:\n${url}`);
+    }).catch(() => {
+      prompt('Copia este link:', url);
+    });
+  }, [userId]);
 
   const eliminarPagoRevendedor = useCallback((pagoId: number) => {
     if (window.confirm('¿Eliminar este registro de pago? (Las facturas no se modificarán)')) {
@@ -2966,22 +3065,31 @@ const NegocioPage = () => {
                           .map((rev, idx) => {
                           const isHidden = revendedoresOcultos.includes(rev.nombre);
                           return (
-                            <div 
-                              key={idx} 
-                              className={`bg-[#0a0d14] p-5 rounded-xl border flex flex-col gap-4 transition-colors ${isHidden ? 'border-gray-800 opacity-60' : 'border-orange-500/30'}`}
+                            <div
+                              key={idx}
+                              className={`bg-[#0a0d14] p-4 sm:p-5 rounded-xl border flex flex-col gap-3 sm:gap-4 transition-colors ${isHidden ? 'border-gray-800 opacity-60' : 'border-orange-500/30'}`}
                             >
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-lg">
+                              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                                <div className="flex items-center gap-3 sm:gap-4">
+                                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg sm:text-xl shadow-lg flex-shrink-0">
                                     {rev.nombre.charAt(0).toUpperCase()}
                                   </div>
-                                  <div>
-                                    <h3 className="font-bold text-white text-lg">{rev.nombre}</h3>
-                                    <p className="text-sm text-gray-500">{rev.facturasPendientes} facturas</p>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <h3 className="font-bold text-white text-base sm:text-lg truncate">{rev.nombre}</h3>
+                                      <button
+                                        onClick={() => copiarLinkPortal(rev.nombre)}
+                                        className="p-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-400 transition-colors flex-shrink-0"
+                                        title="Copiar link del portal"
+                                      >
+                                        <Link2 size={14} />
+                                      </button>
+                                    </div>
+                                    <p className="text-xs sm:text-sm text-gray-500">{rev.facturasPendientes} facturas</p>
                                   </div>
                                 </div>
-                                <p className="text-2xl font-mono font-bold text-orange-400">
-                                  {formatearDinero(rev.deudaTotal)}
+                                <p className="text-xl sm:text-2xl font-mono font-bold text-orange-400 sm:text-right">
+                                  {formatearDineroCorto(rev.deudaTotal)}
                                 </p>
                               </div>
                               <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-800">
@@ -3181,11 +3289,11 @@ const NegocioPage = () => {
         </AnimatePresence>
 
         {/* Main Content */}
-        <main className="relative max-w-6xl mx-auto px-4 py-8 pb-24 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Columna Izquierda - Formulario */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-24">
-              <SimpleCard className="relative bg-gradient-to-br from-[#1a1f33] via-[#151929] to-[#0f1219] rounded-2xl p-6 border border-gray-800/50 shadow-2xl overflow-hidden">
+        <main className="relative max-w-6xl mx-auto px-3 sm:px-4 py-6 pb-24 grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          {/* Columna Izquierda - Formulario (order-2 en mobile para que stats aparezcan primero) */}
+          <div className="lg:col-span-1 order-2 lg:order-1">
+            <div className="lg:sticky lg:top-24">
+              <SimpleCard className="relative bg-gradient-to-br from-[#1a1f33] via-[#151929] to-[#0f1219] rounded-2xl p-4 sm:p-6 border border-gray-800/50 shadow-2xl overflow-hidden">
                 <div className="absolute -top-20 -right-20 w-40 h-40 bg-purple-500/10 rounded-full blur-[60px]" />
                 
                 <div className="relative">
@@ -3212,15 +3320,43 @@ const NegocioPage = () => {
                     
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Teléfono</label>
-                      <input 
-                        type="tel"
-                        className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl p-3.5 text-sm text-white focus:border-purple-500/50 outline-none transition-colors placeholder:text-gray-600"
-                        placeholder="3001234567"
-                        value={form.telefono}
-                        onChange={e => setForm({...form, telefono: e.target.value})}
-                      />
+                      <div className="relative">
+                        <input
+                          type="tel"
+                          className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl p-3.5 pr-24 text-sm text-white focus:border-purple-500/50 outline-none transition-colors placeholder:text-gray-600"
+                          placeholder="3001234567"
+                          value={form.telefono}
+                          onChange={e => setForm({...form, telefono: e.target.value})}
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setForm({...form, plataforma: 'whatsapp'})}
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                              form.plataforma === 'whatsapp'
+                                ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
+                                : 'bg-gray-800/50 text-gray-500 hover:text-green-400 hover:bg-green-500/10'
+                            }`}
+                            title="WhatsApp"
+                          >
+                            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setForm({...form, plataforma: 'telegram'})}
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                              form.plataforma === 'telegram'
+                                ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                : 'bg-gray-800/50 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10'
+                            }`}
+                            title="Telegram"
+                          >
+                            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    
+
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Revendedor</label>
                       <input 
@@ -3270,22 +3406,28 @@ const NegocioPage = () => {
                           <label className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
                             <Percent size={10} /> Cobras
                           </label>
-                          <input 
-                            type="number" 
-                            className="w-full bg-[#1a1f33] border border-purple-500/30 rounded-xl p-3.5 text-white text-center font-bold focus:border-purple-500/60 transition-colors outline-none" 
-                            value={form.porcentajeCobro} 
-                            onChange={e => setForm({...form, porcentajeCobro: Number(e.target.value)})} 
+                          <input
+                            type="number"
+                            className="w-full bg-[#1a1f33] border border-purple-500/30 rounded-xl p-3.5 text-white text-center font-bold focus:border-purple-500/60 transition-colors outline-none"
+                            value={form.porcentajeCobro}
+                            onChange={e => {
+                              ultimoCampoEditado.current = 'porcentaje';
+                              setForm({...form, porcentajeCobro: Number(e.target.value)});
+                            }}
                           />
                         </div>
                         <div className="w-2/3 space-y-1.5">
                           <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Total Cobrar</label>
                           <div className="relative">
                             <span className="absolute left-4 top-3.5 text-emerald-500 font-medium">$</span>
-                            <input 
-                              type="tel" 
-                              className="w-full bg-[#1a1f33] border border-emerald-500/30 rounded-xl p-3.5 pl-8 text-emerald-400 font-bold font-mono focus:border-emerald-500/60 transition-colors outline-none" 
-                              value={form.cobroCliente} 
-                              onChange={(e) => handleMoneyInput(e, 'cobroCliente')} 
+                            <input
+                              type="tel"
+                              className="w-full bg-[#1a1f33] border border-emerald-500/30 rounded-xl p-3.5 pl-8 text-emerald-400 font-bold font-mono focus:border-emerald-500/60 transition-colors outline-none"
+                              value={form.cobroCliente}
+                              onChange={(e) => {
+                                ultimoCampoEditado.current = 'cobro';
+                                handleMoneyInput(e, 'cobroCliente');
+                              }}
                             />
                           </div>
                         </div>
@@ -3301,11 +3443,11 @@ const NegocioPage = () => {
             </div>
           </div>
 
-          {/* Columna Derecha - Lista */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* Columna Derecha - Lista (order-1 en mobile para que aparezca primero) */}
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6 order-1 lg:order-2">
             {/* Stats Header */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <SimpleCard className="group relative bg-gradient-to-br from-orange-900/40 via-orange-900/20 to-transparent p-5 rounded-xl border border-orange-500/30 overflow-hidden">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+              <SimpleCard className="col-span-2 sm:col-span-1 group relative bg-gradient-to-br from-orange-900/40 via-orange-900/20 to-transparent p-4 sm:p-5 rounded-xl border border-orange-500/30 overflow-hidden">
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="p-2 bg-orange-500/20 rounded-xl">
@@ -3313,68 +3455,68 @@ const NegocioPage = () => {
                     </div>
                     <p className="text-orange-400/80 text-xs font-bold uppercase">Por Cobrar</p>
                   </div>
-                  <p className="text-3xl font-mono font-bold text-orange-400">{formatearDinero(dineroPendienteCobro)}</p>
+                  <p className="text-2xl sm:text-3xl font-mono font-bold text-orange-400">{formatearDinero(dineroPendienteCobro)}</p>
                 </div>
               </SimpleCard>
-              
-              <MagneticButton 
-                onClick={() => setVistaRevendedores(true)} 
-                className="group relative bg-gradient-to-br from-purple-900/40 via-purple-900/20 to-transparent border border-purple-500/30 text-white p-5 rounded-xl flex items-center gap-4 overflow-hidden text-left"
+
+              <MagneticButton
+                onClick={() => setVistaRevendedores(true)}
+                className="group relative bg-gradient-to-br from-purple-900/40 via-purple-900/20 to-transparent border border-purple-500/30 text-white p-3 sm:p-5 rounded-xl flex items-center gap-2 sm:gap-4 overflow-hidden text-left"
               >
-                <div className="p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl shadow-lg">
-                  <Users className="text-white" size={20} />
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl shadow-lg">
+                  <Users className="text-white" size={18} />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-purple-400/80">Ver Cuentas</p>
-                  <p className="font-bold text-lg">Revendedores</p>
+                  <p className="text-[9px] sm:text-[10px] uppercase font-bold text-purple-400/80">Ver Cuentas</p>
+                  <p className="font-bold text-sm sm:text-lg">Revendedores</p>
                 </div>
               </MagneticButton>
-              
-              <MagneticButton 
-                onClick={() => setVistaEstadisticas(true)} 
-                className="group relative bg-gradient-to-br from-emerald-900/40 via-emerald-900/20 to-transparent border border-emerald-500/30 text-white p-5 rounded-xl flex items-center gap-4 overflow-hidden text-left"
+
+              <MagneticButton
+                onClick={() => setVistaEstadisticas(true)}
+                className="group relative bg-gradient-to-br from-emerald-900/40 via-emerald-900/20 to-transparent border border-emerald-500/30 text-white p-3 sm:p-5 rounded-xl flex items-center gap-2 sm:gap-4 overflow-hidden text-left"
               >
-                <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg">
-                  <BarChart3 className="text-white" size={20} />
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg">
+                  <BarChart3 className="text-white" size={18} />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-bold text-emerald-400/80">Ver Análisis</p>
-                  <p className="font-bold text-lg">Estadísticas</p>
+                  <p className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-400/80">Ver Análisis</p>
+                  <p className="font-bold text-sm sm:text-lg">Estadísticas</p>
                 </div>
               </MagneticButton>
             </div>
 
             {/* Mini Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <SimpleCard className="group relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-5 rounded-xl border border-gray-800/50 hover:border-emerald-500/30 transition-colors overflow-hidden">
-                <div className="flex items-center gap-4">
-                  <button 
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <SimpleCard className="group relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 sm:p-5 rounded-xl border border-gray-800/50 hover:border-emerald-500/30 transition-colors overflow-hidden">
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <button
                     onClick={abrirDesgloseGanancia}
-                    className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                    className="p-2 sm:p-3 bg-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/30 transition-colors flex-shrink-0"
                     title="Ver desglose de ganancias"
                   >
-                    <TrendingUp size={20} />
+                    <TrendingUp size={18} />
                   </button>
-                  <button 
+                  <button
                     onClick={abrirDesgloseGanancia}
-                    className="flex-1 text-left hover:opacity-80 transition-opacity"
+                    className="flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
                     title="Ver desglose de ganancias"
                   >
-                    <p className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
-                      Ganancia Hoy
+                    <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1 flex-wrap">
+                      <span>Ganancia Hoy</span>
                       {desgloseGananciaDiaria.length > 0 && (
-                        <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded text-[8px]">
+                        <span className="bg-emerald-500/20 text-emerald-400 px-1 sm:px-1.5 py-0.5 rounded text-[7px] sm:text-[8px]">
                           {desgloseGananciaDiaria.length} cobros
                         </span>
                       )}
                     </p>
-                    <p className="text-white font-mono font-bold text-xl">{formatearDinero(gananciaDiaria)}</p>
+                    <p className="text-white font-mono font-bold text-base sm:text-xl truncate">{formatearDinero(gananciaDiaria)}</p>
                   </button>
-                  <div className="relative">
-                    <input 
-                      type="date" 
-                      value={diaEstadistica} 
-                      onChange={e => {setDiaEstadistica(e.target.value); setMesEstadistica(e.target.value.slice(0, 7));}} 
+                  <div className="relative flex-shrink-0 hidden sm:block">
+                    <input
+                      type="date"
+                      value={diaEstadistica}
+                      onChange={e => {setDiaEstadistica(e.target.value); setMesEstadistica(e.target.value.slice(0, 7));}}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                     <div className="p-2 bg-gray-800/50 hover:bg-gray-700/50 rounded-xl transition-colors border border-gray-700/50 hover:border-gray-600 pointer-events-none">
@@ -3383,16 +3525,16 @@ const NegocioPage = () => {
                   </div>
                 </div>
               </SimpleCard>
-              
-              <div className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-5 rounded-xl border border-gray-800/50 flex items-center gap-4 overflow-hidden">
-                <div className="p-3 bg-purple-500/20 rounded-xl text-purple-400">
-                  <Calendar size={20} />
+
+              <div className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 sm:p-5 rounded-xl border border-gray-800/50 flex items-center gap-2 sm:gap-4 overflow-hidden">
+                <div className="p-2 sm:p-3 bg-purple-500/20 rounded-xl text-purple-400 flex-shrink-0">
+                  <Calendar size={18} />
                 </div>
-                <div className="flex-1">
-                  <p className="text-[10px] text-gray-500 uppercase font-bold">Ganancia Mes</p>
-                  <p className="text-white font-mono font-bold text-xl">{formatearDinero(gananciaNetaMensual)}</p>
-                  <div className="w-full bg-gray-800 h-2 rounded-full mt-2 overflow-hidden">
-                    <div 
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold">Ganancia Mes</p>
+                  <p className="text-white font-mono font-bold text-sm sm:text-xl whitespace-nowrap overflow-hidden text-ellipsis" title={formatearDinero(gananciaNetaMensual)}>{formatearDineroCorto(gananciaNetaMensual)}</p>
+                  <div className="w-full bg-gray-800 h-1.5 sm:h-2 rounded-full mt-1.5 sm:mt-2 overflow-hidden">
+                    <div
                       className="bg-gradient-to-r from-purple-500 via-fuchsia-500 to-emerald-400 h-full rounded-full transition-all duration-500"
                       style={{ width: `${porcentajeMeta}%` }}
                     />
@@ -3402,43 +3544,47 @@ const NegocioPage = () => {
             </div>
 
             {/* Filtros */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 rounded-xl border border-gray-800/50">
-              <div className="flex bg-[#0a0d14] rounded-xl p-1 w-full sm:w-auto overflow-x-auto">
+            <div className="flex flex-col gap-3 bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-2 sm:p-3 rounded-xl border border-gray-800/50">
+              {/* Tabs - scroll horizontal en móvil */}
+              <div className="flex bg-[#0a0d14] rounded-xl p-1 overflow-x-auto scrollbar-hide">
                 {[
-                  { id: 'porPagar', label: 'Por Pagar', icon: ClipboardList },
-                  { id: 'porCobrar', label: 'Por Cobrar', icon: AlertTriangle },
-                  { id: 'finalizados', label: 'Finalizados', icon: Check },
-                  { id: 'garantias', label: 'Garantías', icon: RefreshCw },
-                  { id: 'ocultas', label: `Ocultas (${cantidadOcultas})`, icon: EyeOff }
+                  { id: 'porPagar', label: 'Por Pagar', shortLabel: 'Pagar', icon: ClipboardList },
+                  { id: 'porCobrar', label: 'Por Cobrar', shortLabel: 'Cobrar', icon: AlertTriangle },
+                  { id: 'finalizados', label: 'Final', shortLabel: 'Final', icon: Check },
+                  { id: 'garantias', label: 'Garantías', shortLabel: 'Gar.', icon: RefreshCw },
+                  { id: 'ocultas', label: `Ocultas`, shortLabel: `(${cantidadOcultas})`, icon: EyeOff }
                 ].map((tab) => (
-                  <button 
+                  <button
                     key={tab.id}
                     onClick={() => {
                       setFiltro(tab.id);
                       if (tab.id === 'ocultas') setMostrarOcultas(true);
                       else setMostrarOcultas(false);
-                    }} 
-                    className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold uppercase flex items-center gap-2 transition-colors ${
-                      filtro === tab.id 
-                        ? tab.id === 'porPagar' ? 'bg-gray-700 text-white' 
-                          : tab.id === 'porCobrar' ? 'bg-orange-500/30 text-orange-300' 
+                    }}
+                    className={`flex-1 min-w-fit px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase flex items-center justify-center gap-1 sm:gap-2 transition-colors whitespace-nowrap ${
+                      filtro === tab.id
+                        ? tab.id === 'porPagar' ? 'bg-gray-700 text-white'
+                          : tab.id === 'porCobrar' ? 'bg-orange-500/30 text-orange-300'
                           : tab.id === 'finalizados' ? 'bg-emerald-500/30 text-emerald-300'
                           : tab.id === 'garantias' ? 'bg-red-500/30 text-red-300'
                           : 'bg-gray-600/30 text-gray-300'
                         : 'text-gray-500 hover:text-white'
                     }`}
                   >
-                    <tab.icon size={14}/> <span className="hidden sm:inline">{tab.label}</span>
+                    <tab.icon size={12} className="sm:w-[14px] sm:h-[14px]"/>
+                    <span className="sm:hidden">{tab.shortLabel}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2 w-full sm:w-auto">
+              {/* Búsqueda y ordenamiento */}
+              <div className="flex gap-2">
                 {/* Selector de ordenamiento */}
-                <div className="relative">
+                <div className="relative flex-shrink-0">
                   <select
                     value={ordenFacturas}
                     onChange={(e) => setOrdenFacturas(e.target.value as any)}
-                    className="appearance-none bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2.5 pl-9 pr-8 text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none cursor-pointer"
+                    className="appearance-none bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2 sm:py-2.5 pl-8 sm:pl-9 pr-6 sm:pr-8 text-xs sm:text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none cursor-pointer"
                   >
                     <option value="reciente">Más reciente</option>
                     <option value="antiguo">Más antiguo</option>
@@ -3446,18 +3592,18 @@ const NegocioPage = () => {
                     <option value="revendedor">Por revendedor</option>
                     <option value="monto">Por monto</option>
                   </select>
-                  <ArrowUpDown className="absolute left-3 top-3 text-gray-600 w-4 h-4 pointer-events-none" />
-                  <ChevronDown className="absolute right-2 top-3 text-gray-600 w-4 h-4 pointer-events-none" />
+                  <ArrowUpDown className="absolute left-2.5 sm:left-3 top-2.5 sm:top-3 text-gray-600 w-3.5 h-3.5 sm:w-4 sm:h-4 pointer-events-none" />
+                  <ChevronDown className="absolute right-1.5 sm:right-2 top-2.5 sm:top-3 text-gray-600 w-3.5 h-3.5 sm:w-4 sm:h-4 pointer-events-none" />
                 </div>
                 {/* Búsqueda */}
-                <div className="relative flex-1 sm:w-48">
-                  <Search className="absolute left-3 top-3 text-gray-600 w-4 h-4" />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar..." 
-                    className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2.5 pl-10 pr-4 text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none" 
-                    value={busqueda} 
-                    onChange={e => setBusqueda(e.target.value)} 
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 sm:left-3 top-2.5 sm:top-3 text-gray-600 w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <input
+                    type="text"
+                    placeholder="Buscar..."
+                    className="w-full bg-[#0a0d14] border border-gray-700/50 rounded-xl py-2 sm:py-2.5 pl-8 sm:pl-10 pr-3 sm:pr-4 text-xs sm:text-sm text-gray-300 focus:border-purple-500/50 transition-colors outline-none"
+                    value={busqueda}
+                    onChange={e => setBusqueda(e.target.value)}
                   />
                 </div>
               </div>
