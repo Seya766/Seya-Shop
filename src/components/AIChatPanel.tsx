@@ -1001,13 +1001,135 @@ CÓMO RESPONDER:
     return 'Acción desconocida';
   };
 
+  // Detect if a message is clearly a QUERY (asking for info) vs an ACTION (wants to do something)
+  // This is CRITICAL - if it's a query, we don't even send tools to the API
+  const isQueryNotAction = useCallback((text: string): boolean => {
+    const lowerText = text.toLowerCase().trim();
+
+    // Strong query indicators - these are DEFINITELY queries
+    const strongQueryPatterns = [
+      /^(cu[aá]nt[oa]?s?|qu[eé]|qui[eé]n(es)?|d[oó]nde|c[oó]mo|por\s*qu[eé]|cu[aá]l(es)?)\b/i, // Questions starting with interrogative
+      /\?$/, // Ends with question mark
+      /^(dame|dime|mu[eé]str(a|ame)|list(a|ame)|ver|revis(a|ar)|anali(za|zar)|resum(e|en|ir)|explic(a|ar))\b/i, // Info requests
+      /^(hola|hey|buenos?\s+(d[ií]as?|tardes?|noches?)|gracias|ok|vale|ent(iendo|endido)|perfecto)\b/i, // Greetings/acknowledgments
+      /(llevamos|tenemos|hay|tengo|tienes?|tiene|est[aá]n?|van|vamos)\s+(de\s+)?(gastos?|ingresos?|facturas?|deud|este\s+mes)/i, // Status queries
+      /^(qui[eé]n|cu[aá]nto|cu[aá]les?)\s+(me\s+)?debe/i, // "who owes me"
+      /(total|suma|resumen|balance|estado|situaci[oó]n)\s+(de|del|este|actual)/i, // Summary requests
+      /\b(qu[eé]\s+(puedo|puedes|pod[eé]s)|ayud(a|ame)|funciona|sirve|hace)\b/i, // Help/capability questions
+    ];
+
+    // Strong action indicators - these are DEFINITELY actions
+    const strongActionPatterns = [
+      /^(registr[aá]|cre[aá]|agreg[aá]|a[ñn]ad[eéií]|elimin[aá]|borr[aá]|modific[aá]|cambi[aá]|marc[aá])\b/i, // Direct commands
+      /^(pon|coloc[aá]|met[eéií]|ingres[aá])\s+(un\s+)?(gasto|ingreso|factura)/i, // Direct action on data
+      /\b(gast[eéo]|compr[eéo]|pagu[eéo])\s+[\d$]/i, // "I spent X"
+      /\b(me\s+pagaron|recib[ií])\s+[\d$]/i, // "I received X"
+      /[\d.,]+\s*(mil|k)\s+(en|por|de|pesos)/i, // Money amounts with action context
+    ];
+
+    // Check for strong query patterns first
+    if (strongQueryPatterns.some(p => p.test(lowerText))) {
+      // Double-check it's not also an action (like "cuanto gaste? pon un gasto de 50k")
+      if (!strongActionPatterns.some(p => p.test(lowerText))) {
+        return true; // It's a query
+      }
+    }
+
+    // Check for clear action patterns
+    if (strongActionPatterns.some(p => p.test(lowerText))) {
+      return false; // It's an action
+    }
+
+    // General knowledge questions (not about the app data)
+    const generalKnowledgePatterns = [
+      /\b(qu[eé]\s+(es|son|cuesta|vale|significa)|c[oó]mo\s+(se\s+)?(hace|cocina|prepara|funciona))\b/i,
+      /\b(presidente|clima|tiempo|noticias|d[oó]lar|precio)\b/i,
+      /\b(en\s+colombia|en\s+el\s+mundo|actualmente)\b/i,
+    ];
+    if (generalKnowledgePatterns.some(p => p.test(lowerText))) {
+      return true; // General knowledge = no action needed
+    }
+
+    // Default: if there's no clear action pattern, treat as query (safer)
+    return !strongActionPatterns.some(p => p.test(lowerText));
+  }, []);
+
+  // Process message history to prevent re-execution of previous actions
+  // This is CRITICAL to make the AI intelligent - it should only act on the LAST user message
+  const processMessagesForAPI = useCallback((messagesToSend: ChatMessage[]): ChatMessage[] => {
+    if (messagesToSend.length === 0) return messagesToSend;
+
+    // Find the last user message index
+    let lastUserIndex = -1;
+    for (let i = messagesToSend.length - 1; i >= 0; i--) {
+      if (messagesToSend[i].role === 'user') {
+        lastUserIndex = i;
+        break;
+      }
+    }
+
+    if (lastUserIndex === -1) return messagesToSend;
+
+    // Action-like patterns that indicate the user wanted to DO something (not just ask)
+    const actionPatterns = [
+      /\b(gast[eéo]|compr[eéo]|pagu[eéo]|regist(ra|ré)|cre[aé]|agreg[aé]|a[ñn]ad[eéií]|elimin[aé]|borr[aé]|modific[aé]|cambi[aé]|marc[aé])\b/i,
+      /\b(ingres[aé]|met[ií]|pon|coloc[aé])\s+(un\s+)?(gasto|ingreso|factura)/i,
+      /\$\s*[\d.,]+\s*(mil|k|en|por|de)/i,
+      /[\d.,]+\s*(mil|k)\s+(en|por|de|pesos)/i,
+    ];
+
+    // Query patterns that indicate the user is ASKING, not DOING
+    const queryPatterns = [
+      /^(cu[aá]nt|qu[eé]|qui[eé]n|d[oó]nde|c[oó]mo|por\s*qu[eé]|cu[aá]l|dame|dime|mu[eé]str|list|ver|revis|anali|resum|explic)/i,
+      /\?$/,
+      /(llevamos|tenemos|hay|tengo|tiene|est[aá]n?)\s+(de\s+)?(gastos?|ingresos?|facturas?|deud)/i,
+    ];
+
+    // Check if a message looks like an action request
+    const looksLikeAction = (text: string): boolean => {
+      const lowerText = text.toLowerCase();
+      // If it matches query patterns, it's NOT an action
+      if (queryPatterns.some(p => p.test(lowerText))) return false;
+      // If it matches action patterns, it IS an action
+      return actionPatterns.some(p => p.test(lowerText));
+    };
+
+    // Process messages: mark old action requests as completed
+    return messagesToSend.map((msg, index) => {
+      // Keep tool messages and assistant messages as-is
+      if (msg.role !== 'user') return msg;
+
+      // Keep the LAST user message exactly as-is (this is what we want to process)
+      if (index === lastUserIndex) return msg;
+
+      // For PREVIOUS user messages that look like actions, mark them as already executed
+      if (looksLikeAction(msg.content)) {
+        // Check if the NEXT assistant message indicates it was completed (has ✅)
+        const nextMsg = messagesToSend[index + 1];
+        const wasCompleted = nextMsg && nextMsg.role === 'assistant' && nextMsg.content.includes('✅');
+        const wasCancelled = nextMsg && nextMsg.role === 'assistant' && nextMsg.content.toLowerCase().includes('cancelad');
+
+        if (wasCompleted) {
+          return { ...msg, content: `[ACCIÓN YA EJECUTADA - NO REPETIR] ${msg.content}` };
+        } else if (wasCancelled) {
+          return { ...msg, content: `[ACCIÓN CANCELADA - NO EJECUTAR] ${msg.content}` };
+        }
+      }
+
+      return msg;
+    });
+  }, []);
+
   // Call AI API (non-streaming for tool calls, streaming for text)
-  const callAI = useCallback(async (messagesToSend: ChatMessage[]): Promise<{ content: string; tool_calls?: ToolCall[] }> => {
+  const callAI = useCallback(async (messagesToSend: ChatMessage[], forceNoTools = false): Promise<{ content: string; tool_calls?: ToolCall[] }> => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // CRITICAL: Process messages to prevent re-execution of previous actions
+    const processedMessages = processMessagesForAPI(messagesToSend);
+
     // For API, format messages correctly for Groq's OpenAI-compatible endpoint
-    const apiMessages = messagesToSend.map(m => {
+    const apiMessages = processedMessages.map(m => {
       if (m.tool_call_id) {
         // Tool response: must include name of the function
         return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id, name: m.name || '' };
@@ -1018,6 +1140,11 @@ CÓMO RESPONDER:
       }
       return { role: m.role, content: m.content };
     });
+
+    // CRITICAL: Determine if we should even send tools
+    // If the last user message is clearly a query, DON'T send tools - this prevents the AI from making tool calls for queries
+    const lastUserMsg = messagesToSend.filter(m => m.role === 'user').pop();
+    const shouldIncludeTools = !forceNoTools && lastUserMsg && !isQueryNotAction(lastUserMsg.content);
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -1031,7 +1158,7 @@ CÓMO RESPONDER:
           { role: 'system', content: buildSystemPrompt() },
           ...apiMessages,
         ],
-        tools: AI_TOOLS,
+        ...(shouldIncludeTools ? { tools: AI_TOOLS } : {}),
         temperature: 0.7,
         max_tokens: 4096,
       }),
@@ -1077,7 +1204,7 @@ CÓMO RESPONDER:
     const result = await response.json();
     const choice = result.choices?.[0]?.message;
     return { content: choice?.content || '', tool_calls: choice?.tool_calls };
-  }, [buildSystemPrompt]);
+  }, [buildSystemPrompt, processMessagesForAPI, isQueryNotAction]);
 
   // Handle confirmed action execution - supports multiple tool calls
   const confirmAction = useCallback(async () => {
@@ -1130,7 +1257,8 @@ CÓMO RESPONDER:
         try {
           const assistantToolMsg: ChatMessage = { role: 'assistant', content: '', tool_calls };
           const fullConversation = [...contextMessages, assistantToolMsg, ...toolResponses];
-          const aiResponse = await callAI(fullConversation);
+          // Force no tools for the follow-up response - we just want a natural language summary
+          const aiResponse = await callAI(fullConversation, true);
 
           if (aiResponse.content) {
             summaryMessage = `✅ ${aiResponse.content}`;
