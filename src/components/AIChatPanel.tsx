@@ -443,18 +443,21 @@ const AIChatPanel = ({ isOpen, onToggle }: AIChatPanelProps) => {
         ventas: mesActual.ventas,
         ganancia_bruta: mesActual.ganancia,
         cobrado: mesActual.cobrado,
-        ingresos_registrados: mesActual.ingresos,
-        gastos_registrados: mesActual.gastos,
-        balance: mesActual.ingresos - mesActual.gastos,
+        ingresos_extra: mesActual.ingresos,
+        gastos: mesActual.gastos,
+        // Balance REAL: ganancia de facturas + ingresos extra - gastos
+        balance_total: mesActual.ganancia + mesActual.ingresos - mesActual.gastos,
+        // Desglose para claridad
+        _explicacion_balance: `Ganancia facturas (${mesActual.ganancia}) + Ingresos extra (${mesActual.ingresos}) - Gastos (${mesActual.gastos}) = ${mesActual.ganancia + mesActual.ingresos - mesActual.gastos}`,
       },
       mes_anterior: {
         periodo: prevMonth,
         facturas: mesPasado.count,
         ventas: mesPasado.ventas,
         ganancia_bruta: mesPasado.ganancia,
-        ingresos: mesPasado.ingresos,
+        ingresos_extra: mesPasado.ingresos,
         gastos: mesPasado.gastos,
-        balance: mesPasado.ingresos - mesPasado.gastos,
+        balance_total: mesPasado.ganancia + mesPasado.ingresos - mesPasado.gastos,
       },
       deudores: Object.entries(
         pendientesCobro.reduce((acc, f) => {

@@ -1030,11 +1030,19 @@ const FinanzasPage = () => {
                 <div className="p-1.5 bg-purple-500/20 rounded-lg">
                   <PiggyBank size={14} />
                 </div>
-                <span className="text-xs uppercase font-medium">Ahorro</span>
+                <span className="text-xs uppercase font-medium">{metaAhorro.activa ? 'Meta Ahorro' : 'Tasa Ahorro'}</span>
               </div>
-              <p className="text-2xl font-bold font-mono">{finanzas.tasaAhorro.toFixed(0)}%</p>
+              <p className="text-2xl font-bold font-mono">
+                {metaAhorro.activa
+                  ? `${Math.min(100, analisisFinanciero.progresoMeta).toFixed(0)}%`
+                  : `${finanzas.tasaAhorro.toFixed(0)}%`
+                }
+              </p>
               <p className="text-xs text-gray-500 mt-1">
-                {metaAhorro.activa ? `Meta: ${formatearDineroCorto(metaAhorro.monto)}` : 'Sin meta definida'}
+                {metaAhorro.activa
+                  ? `${formatearDineroCorto(Math.max(0, finanzas.balance))} / ${formatearDineroCorto(metaAhorro.monto)}`
+                  : 'Del ingreso total'
+                }
               </p>
             </div>
           </div>
