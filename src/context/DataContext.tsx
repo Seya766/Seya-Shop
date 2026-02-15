@@ -103,6 +103,9 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   // Track if listeners are currently being set up (prevents duplicate listeners in StrictMode)
   const isSettingUpListeners = useRef(false);
 
+  // Guard: track keys with pending local writes so onSnapshot doesn't overwrite them
+  const pendingWritesRef = useRef<Set<string>>(new Set());
+
   // Force Firebase to reconnect and sync fresh data
   const forceSync = useCallback(async () => {
     if (!navigator.onLine) return;
@@ -183,10 +186,25 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
         const fromCache = snap.metadata.fromCache;
         const hasPendingWrites = snap.metadata.hasPendingWrites;
 
-        // Always update state from snapshots to ensure all data loads
-        // correctly, including cached data from previous sessions.
-        // No loop risk: this uses the direct state setter (e.g. setFacturasState),
-        // NOT the wrapper (e.g. setFacturas) that calls saveToFirestore.
+        // Skip snapshot updates for keys that have pending LOCAL writes.
+        // This prevents onSnapshot from reverting optimistic state updates
+        // (e.g., toggling pagadoAProveedor) before Firestore confirms the write.
+        // Once the write is confirmed (hasPendingWrites=false, fromCache=false),
+        // we clear the guard and accept the server-confirmed data.
+        if (pendingWritesRef.current.has(key)) {
+          if (!hasPendingWrites && !fromCache) {
+            // Server confirmed our write - clear guard and accept data
+            pendingWritesRef.current.delete(key);
+          } else {
+            // Still pending - skip this snapshot to preserve local state
+            setLoading(false);
+            if (hasPendingWrites) {
+              setSyncStatus('syncing');
+            }
+            return;
+          }
+        }
+
         if (snap.exists()) {
           let value = snap.data().value as T;
           if (transform) {
@@ -208,6 +226,8 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
         console.error(`Error listening to ${key}:`, error);
         setLoading(false);
         setSyncStatus('pending');
+        // Clear pending guard on error so future snapshots work
+        pendingWritesRef.current.delete(key);
       });
 
       unsubscribesRef.current.push(unsub);
@@ -235,6 +255,10 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const saveToFirestore = useCallback(async (key: string, value: unknown) => {
     if (!userId) return;
 
+    // Mark this key as having a pending local write BEFORE setDoc.
+    // This prevents onSnapshot from overwriting our optimistic state update.
+    pendingWritesRef.current.add(key);
+
     setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
       // All data stored under ADMIN path, with tenant-specific key prefix
@@ -247,80 +271,74 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     } catch (error) {
       console.error(`Error guardando ${key}:`, error);
       setSyncStatus('pending');
+      // Clear guard on error so future snapshots can update state
+      pendingWritesRef.current.delete(key);
     }
   }, [userId]);
 
-  const setFacturas = useCallback((value: Factura[] | ((prev: Factura[]) => Factura[])) => {
-    setFacturasState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.FACTURAS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  // Helper to create setter functions that update state FIRST (optimistic),
+  // then save to Firestore OUTSIDE the state updater.
+  // This prevents onSnapshot from racing with the state update and reverting it.
+  const createSetter = <T,>(
+    stateSetter: React.Dispatch<React.SetStateAction<T>>,
+    storageKey: string
+  ) => {
+    return (value: T | ((prev: T) => T)) => {
+      let computedValue: T;
+      stateSetter(prev => {
+        computedValue = typeof value === 'function' ? (value as (prev: T) => T)(prev) : value;
+        return computedValue;
+      });
+      // Save AFTER the state updater runs (no side effects inside updater).
+      // React calls the updater synchronously, so computedValue is set.
+      saveToFirestore(storageKey, computedValue!);
+    };
+  };
 
-  const setRevendedoresOcultos = useCallback((value: string[] | ((prev: string[]) => string[])) => {
-    setRevendedoresOcultosState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.REVENDEDORES_OCULTOS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setFacturas = useCallback(
+    createSetter(setFacturasState, STORAGE_KEYS.FACTURAS),
+    [saveToFirestore]
+  );
 
-  const setPagosRevendedores = useCallback((value: PagoRevendedor[] | ((prev: PagoRevendedor[]) => PagoRevendedor[])) => {
-    setPagosRevendedoresState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.PAGOS_REVENDEDORES, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setRevendedoresOcultos = useCallback(
+    createSetter(setRevendedoresOcultosState, STORAGE_KEYS.REVENDEDORES_OCULTOS),
+    [saveToFirestore]
+  );
 
-  const setGastosFijos = useCallback((value: GastoFijo[] | ((prev: GastoFijo[]) => GastoFijo[])) => {
-    setGastosFijosState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.GASTOS_FIJOS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setPagosRevendedores = useCallback(
+    createSetter(setPagosRevendedoresState, STORAGE_KEYS.PAGOS_REVENDEDORES),
+    [saveToFirestore]
+  );
 
-  const setTransacciones = useCallback((value: Transaccion[] | ((prev: Transaccion[]) => Transaccion[])) => {
-    setTransaccionesState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.TRANSACCIONES, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setGastosFijos = useCallback(
+    createSetter(setGastosFijosState, STORAGE_KEYS.GASTOS_FIJOS),
+    [saveToFirestore]
+  );
 
-  const setMetaAhorro = useCallback((value: MetaAhorro | ((prev: MetaAhorro) => MetaAhorro)) => {
-    setMetaAhorroState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.META_AHORRO, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setTransacciones = useCallback(
+    createSetter(setTransaccionesState, STORAGE_KEYS.TRANSACCIONES),
+    [saveToFirestore]
+  );
 
-  const setMetasFinancieras = useCallback((value: MetaFinanciera[] | ((prev: MetaFinanciera[]) => MetaFinanciera[])) => {
-    setMetasFinancierasState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.METAS_FINANCIERAS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setMetaAhorro = useCallback(
+    createSetter(setMetaAhorroState, STORAGE_KEYS.META_AHORRO),
+    [saveToFirestore]
+  );
 
-  const setPresupuestoMensual = useCallback((value: number | ((prev: number) => number)) => {
-    setPresupuestoMensualState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.PRESUPUESTO, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setMetasFinancieras = useCallback(
+    createSetter(setMetasFinancierasState, STORAGE_KEYS.METAS_FINANCIERAS),
+    [saveToFirestore]
+  );
 
-  const setFacturasOcultas = useCallback((value: number[] | ((prev: number[]) => number[])) => {
-    setFacturasOcultasState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.FACTURAS_OCULTAS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setPresupuestoMensual = useCallback(
+    createSetter(setPresupuestoMensualState, STORAGE_KEYS.PRESUPUESTO),
+    [saveToFirestore]
+  );
+
+  const setFacturasOcultas = useCallback(
+    createSetter(setFacturasOcultasState, STORAGE_KEYS.FACTURAS_OCULTAS),
+    [saveToFirestore]
+  );
 
   const descargarBackup = () => {
     try {
