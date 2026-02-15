@@ -183,19 +183,18 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
         const fromCache = snap.metadata.fromCache;
         const hasPendingWrites = snap.metadata.hasPendingWrites;
 
-        // Skip state update for our own pending writes echoing back -
-        // we already have this data locally, and overwriting state here
-        // could revert a newer local change the user just made.
-        if (!hasPendingWrites) {
-          if (snap.exists()) {
-            let value = snap.data().value as T;
-            if (transform) {
-              value = transform(value);
-            }
-            setter(value);
-          } else {
-            setter(defaultValue);
+        // Always update state from snapshots to ensure all data loads
+        // correctly, including cached data from previous sessions.
+        // No loop risk: this uses the direct state setter (e.g. setFacturasState),
+        // NOT the wrapper (e.g. setFacturas) that calls saveToFirestore.
+        if (snap.exists()) {
+          let value = snap.data().value as T;
+          if (transform) {
+            value = transform(value);
           }
+          setter(value);
+        } else {
+          setter(defaultValue);
         }
         setLoading(false);
 
