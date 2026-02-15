@@ -98,8 +98,6 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const [facturasOcultas, setFacturasOcultasState] = useState<number[]>(DEFAULT_VALUES.facturasOcultas);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'pending'>('synced');
 
-  // Track if we're receiving data from Firebase to avoid saving loops
-  const isReceivingFromFirebase = useRef(false);
   // Track unsubscribe functions for cleanup
   const unsubscribesRef = useRef<(() => void)[]>([]);
   // Track if listeners are currently being set up (prevents duplicate listeners in StrictMode)
@@ -185,17 +183,19 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
         const fromCache = snap.metadata.fromCache;
         const hasPendingWrites = snap.metadata.hasPendingWrites;
 
-        // Always update state to ensure sync across devices
-        isReceivingFromFirebase.current = true;
-
-        if (snap.exists()) {
-          let value = snap.data().value as T;
-          if (transform) {
-            value = transform(value);
+        // Skip state update for our own pending writes echoing back -
+        // we already have this data locally, and overwriting state here
+        // could revert a newer local change the user just made.
+        if (!hasPendingWrites) {
+          if (snap.exists()) {
+            let value = snap.data().value as T;
+            if (transform) {
+              value = transform(value);
+            }
+            setter(value);
+          } else {
+            setter(defaultValue);
           }
-          setter(value);
-        } else {
-          setter(defaultValue);
         }
         setLoading(false);
 
@@ -205,11 +205,6 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
         } else if (!fromCache) {
           setSyncStatus('synced');
         }
-
-        // Reset flag after React processes the state update
-        requestAnimationFrame(() => {
-          isReceivingFromFirebase.current = false;
-        });
       }, (error) => {
         console.error(`Error listening to ${key}:`, error);
         setLoading(false);
@@ -240,8 +235,6 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
 
   const saveToFirestore = useCallback(async (key: string, value: unknown) => {
     if (!userId) return;
-    // Don't save if we just received this data from Firebase (prevents loops)
-    if (isReceivingFromFirebase.current) return;
 
     setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
