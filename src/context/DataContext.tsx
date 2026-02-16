@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { doc, setDoc, onSnapshot, writeBatch, waitForPendingWrites, enableNetwork, disableNetwork } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, writeBatch, waitForPendingWrites, enableNetwork } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
@@ -79,6 +79,9 @@ const DEFAULT_VALUES = {
   facturasOcultas: [] as number[]
 };
 
+// How long to ignore snapshots after a local write (ms)
+const LOCAL_WRITE_COOLDOWN = 3000;
+
 interface DataProviderProps {
   children: ReactNode;
   userId: string;
@@ -103,26 +106,12 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   // Track if listeners are currently being set up (prevents duplicate listeners in StrictMode)
   const isSettingUpListeners = useRef(false);
 
-  // Guard: track keys with pending local writes so onSnapshot doesn't overwrite them
-  const pendingWritesRef = useRef<Set<string>>(new Set());
+  // Track timestamps of local writes per key.
+  // onSnapshot will SKIP updates for a key if a local write happened within LOCAL_WRITE_COOLDOWN ms.
+  // This prevents Firestore snapshots from reverting optimistic local state updates.
+  const lastLocalWriteRef = useRef<Record<string, number>>({});
 
-  // Force Firebase to reconnect and sync fresh data
-  const forceSync = useCallback(async () => {
-    if (!navigator.onLine) return;
-    setSyncStatus('syncing');
-    try {
-      // Temporarily disable and re-enable network to force fresh sync
-      await disableNetwork(db);
-      await enableNetwork(db);
-      await waitForPendingWrites(db);
-      setSyncStatus('synced');
-    } catch (err) {
-      console.error('Force sync error:', err);
-      setSyncStatus('pending');
-    }
-  }, []);
-
-  // Sync when coming back online or when tab becomes visible
+  // Sync when coming back online (only on actual network recovery, NOT on focus/visibility)
   useEffect(() => {
     const handleOnline = async () => {
       setSyncStatus('syncing');
@@ -135,30 +124,12 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
       }
     };
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && navigator.onLine) {
-        // Force sync when user returns to the tab
-        forceSync();
-      }
-    };
-
-    const handleFocus = () => {
-      if (navigator.onLine) {
-        // Force sync when window gets focus
-        forceSync();
-      }
-    };
-
     window.addEventListener('online', handleOnline);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
 
     return () => {
       window.removeEventListener('online', handleOnline);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
     };
-  }, [forceSync]);
+  }, []);
 
   // Set up real-time listeners for all data
   useEffect(() => {
@@ -181,28 +152,15 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
       const tenantKey = getTenantKey(key, userId);
       const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
 
-      // includeMetadataChanges ensures we get updates when data syncs from server
-      const unsub = onSnapshot(docRef, { includeMetadataChanges: true }, (snap) => {
-        const fromCache = snap.metadata.fromCache;
-        const hasPendingWrites = snap.metadata.hasPendingWrites;
-
-        // Skip snapshot updates for keys that have pending LOCAL writes.
-        // This prevents onSnapshot from reverting optimistic state updates
-        // (e.g., toggling pagadoAProveedor) before Firestore confirms the write.
-        // Once the write is confirmed (hasPendingWrites=false, fromCache=false),
-        // we clear the guard and accept the server-confirmed data.
-        if (pendingWritesRef.current.has(key)) {
-          if (!hasPendingWrites && !fromCache) {
-            // Server confirmed our write - clear guard and accept data
-            pendingWritesRef.current.delete(key);
-          } else {
-            // Still pending - skip this snapshot to preserve local state
-            setLoading(false);
-            if (hasPendingWrites) {
-              setSyncStatus('syncing');
-            }
-            return;
-          }
+      // NO includeMetadataChanges - only fire when actual data changes
+      const unsub = onSnapshot(docRef, (snap) => {
+        // If we recently wrote to this key locally, skip the snapshot
+        // to prevent reverting our optimistic state update.
+        const lastWrite = lastLocalWriteRef.current[key] || 0;
+        const timeSinceWrite = Date.now() - lastWrite;
+        if (timeSinceWrite < LOCAL_WRITE_COOLDOWN) {
+          setLoading(false);
+          return;
         }
 
         if (snap.exists()) {
@@ -216,18 +174,13 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
         }
         setLoading(false);
 
-        // Update sync status
-        if (hasPendingWrites) {
-          setSyncStatus('syncing');
-        } else if (!fromCache) {
+        if (!snap.metadata.fromCache) {
           setSyncStatus('synced');
         }
       }, (error) => {
         console.error(`Error listening to ${key}:`, error);
         setLoading(false);
         setSyncStatus('pending');
-        // Clear pending guard on error so future snapshots work
-        pendingWritesRef.current.delete(key);
       });
 
       unsubscribesRef.current.push(unsub);
@@ -255,9 +208,8 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const saveToFirestore = useCallback(async (key: string, value: unknown) => {
     if (!userId) return;
 
-    // Mark this key as having a pending local write BEFORE setDoc.
-    // This prevents onSnapshot from overwriting our optimistic state update.
-    pendingWritesRef.current.add(key);
+    // Mark the timestamp of this local write so onSnapshot ignores incoming snapshots
+    lastLocalWriteRef.current[key] = Date.now();
 
     setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
@@ -271,74 +223,82 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     } catch (error) {
       console.error(`Error guardando ${key}:`, error);
       setSyncStatus('pending');
-      // Clear guard on error so future snapshots can update state
-      pendingWritesRef.current.delete(key);
+      // Clear the timestamp so snapshots can update state again
+      delete lastLocalWriteRef.current[key];
     }
   }, [userId]);
 
-  // Helper to create setter functions that update state FIRST (optimistic),
-  // then save to Firestore OUTSIDE the state updater.
-  // This prevents onSnapshot from racing with the state update and reverting it.
-  const createSetter = <T,>(
-    stateSetter: React.Dispatch<React.SetStateAction<T>>,
-    storageKey: string
-  ) => {
-    return (value: T | ((prev: T) => T)) => {
-      let computedValue: T;
-      stateSetter(prev => {
-        computedValue = typeof value === 'function' ? (value as (prev: T) => T)(prev) : value;
-        return computedValue;
-      });
-      // Save AFTER the state updater runs (no side effects inside updater).
-      // React calls the updater synchronously, so computedValue is set.
-      saveToFirestore(storageKey, computedValue!);
-    };
-  };
+  const setFacturas = useCallback((value: Factura[] | ((prev: Factura[]) => Factura[])) => {
+    setFacturasState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.FACTURAS, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setFacturas = useCallback(
-    createSetter(setFacturasState, STORAGE_KEYS.FACTURAS),
-    [saveToFirestore]
-  );
+  const setRevendedoresOcultos = useCallback((value: string[] | ((prev: string[]) => string[])) => {
+    setRevendedoresOcultosState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.REVENDEDORES_OCULTOS, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setRevendedoresOcultos = useCallback(
-    createSetter(setRevendedoresOcultosState, STORAGE_KEYS.REVENDEDORES_OCULTOS),
-    [saveToFirestore]
-  );
+  const setPagosRevendedores = useCallback((value: PagoRevendedor[] | ((prev: PagoRevendedor[]) => PagoRevendedor[])) => {
+    setPagosRevendedoresState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.PAGOS_REVENDEDORES, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setPagosRevendedores = useCallback(
-    createSetter(setPagosRevendedoresState, STORAGE_KEYS.PAGOS_REVENDEDORES),
-    [saveToFirestore]
-  );
+  const setGastosFijos = useCallback((value: GastoFijo[] | ((prev: GastoFijo[]) => GastoFijo[])) => {
+    setGastosFijosState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.GASTOS_FIJOS, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setGastosFijos = useCallback(
-    createSetter(setGastosFijosState, STORAGE_KEYS.GASTOS_FIJOS),
-    [saveToFirestore]
-  );
+  const setTransacciones = useCallback((value: Transaccion[] | ((prev: Transaccion[]) => Transaccion[])) => {
+    setTransaccionesState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.TRANSACCIONES, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setTransacciones = useCallback(
-    createSetter(setTransaccionesState, STORAGE_KEYS.TRANSACCIONES),
-    [saveToFirestore]
-  );
+  const setMetaAhorro = useCallback((value: MetaAhorro | ((prev: MetaAhorro) => MetaAhorro)) => {
+    setMetaAhorroState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.META_AHORRO, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setMetaAhorro = useCallback(
-    createSetter(setMetaAhorroState, STORAGE_KEYS.META_AHORRO),
-    [saveToFirestore]
-  );
+  const setMetasFinancieras = useCallback((value: MetaFinanciera[] | ((prev: MetaFinanciera[]) => MetaFinanciera[])) => {
+    setMetasFinancierasState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.METAS_FINANCIERAS, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setMetasFinancieras = useCallback(
-    createSetter(setMetasFinancierasState, STORAGE_KEYS.METAS_FINANCIERAS),
-    [saveToFirestore]
-  );
+  const setPresupuestoMensual = useCallback((value: number | ((prev: number) => number)) => {
+    setPresupuestoMensualState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.PRESUPUESTO, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
-  const setPresupuestoMensual = useCallback(
-    createSetter(setPresupuestoMensualState, STORAGE_KEYS.PRESUPUESTO),
-    [saveToFirestore]
-  );
-
-  const setFacturasOcultas = useCallback(
-    createSetter(setFacturasOcultasState, STORAGE_KEYS.FACTURAS_OCULTAS),
-    [saveToFirestore]
-  );
+  const setFacturasOcultas = useCallback((value: number[] | ((prev: number[]) => number[])) => {
+    setFacturasOcultasState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.FACTURAS_OCULTAS, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
 
   const descargarBackup = () => {
     try {
@@ -365,12 +325,12 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const importarBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !userId) return;
-    
+
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const json = JSON.parse(e.target?.result as string);
-        
+
         if (Array.isArray(json)) {
           if (window.confirm(`¿Restaurar ${json.length} facturas?`)) {
             setFacturas(json);
@@ -409,13 +369,13 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
             setMetasFinancierasState(json.metasFinancieras || DEFAULT_VALUES.metasFinancieras);
             setPresupuestoMensualState(json.presupuestoMensual || DEFAULT_VALUES.presupuestoMensual);
             setFacturasOcultasState(json.facturasOcultas || []);
-            
+
             alert("Backup restaurado y sincronizado con Firebase.");
           }
         }
-      } catch (error) { 
+      } catch (error) {
         console.error('Error al importar:', error);
-        alert("Error al leer el archivo."); 
+        alert("Error al leer el archivo.");
       }
     };
     reader.readAsText(file);
