@@ -79,9 +79,6 @@ const DEFAULT_VALUES = {
   facturasOcultas: [] as number[]
 };
 
-// How long to ignore snapshots after a local write (ms)
-const LOCAL_WRITE_COOLDOWN = 3000;
-
 interface DataProviderProps {
   children: ReactNode;
   userId: string;
@@ -106,12 +103,7 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   // Track if listeners are currently being set up (prevents duplicate listeners in StrictMode)
   const isSettingUpListeners = useRef(false);
 
-  // Track timestamps of local writes per key.
-  // onSnapshot will SKIP updates for a key if a local write happened within LOCAL_WRITE_COOLDOWN ms.
-  // This prevents Firestore snapshots from reverting optimistic local state updates.
-  const lastLocalWriteRef = useRef<Record<string, number>>({});
-
-  // Sync when coming back online (only on actual network recovery, NOT on focus/visibility)
+  // Sync when coming back online or when tab becomes visible
   useEffect(() => {
     const handleOnline = async () => {
       setSyncStatus('syncing');
@@ -124,10 +116,23 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
       }
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        // Ensure pending writes are flushed when user returns to the tab
+        waitForPendingWrites(db).then(() => {
+          setSyncStatus('synced');
+        }).catch(() => {
+          setSyncStatus('pending');
+        });
+      }
+    };
+
     window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -152,17 +157,7 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
       const tenantKey = getTenantKey(key, userId);
       const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
 
-      // NO includeMetadataChanges - only fire when actual data changes
       const unsub = onSnapshot(docRef, (snap) => {
-        // If we recently wrote to this key locally, skip the snapshot
-        // to prevent reverting our optimistic state update.
-        const lastWrite = lastLocalWriteRef.current[key] || 0;
-        const timeSinceWrite = Date.now() - lastWrite;
-        if (timeSinceWrite < LOCAL_WRITE_COOLDOWN) {
-          setLoading(false);
-          return;
-        }
-
         if (snap.exists()) {
           let value = snap.data().value as T;
           if (transform) {
@@ -208,9 +203,6 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const saveToFirestore = useCallback(async (key: string, value: unknown) => {
     if (!userId) return;
 
-    // Mark the timestamp of this local write so onSnapshot ignores incoming snapshots
-    lastLocalWriteRef.current[key] = Date.now();
-
     setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
     try {
       // All data stored under ADMIN path, with tenant-specific key prefix
@@ -223,8 +215,6 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     } catch (error) {
       console.error(`Error guardando ${key}:`, error);
       setSyncStatus('pending');
-      // Clear the timestamp so snapshots can update state again
-      delete lastLocalWriteRef.current[key];
     }
   }, [userId]);
 
