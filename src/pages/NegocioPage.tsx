@@ -8,6 +8,7 @@ import {
   Award, Flame, Activity, Sparkles, Crown, ArrowUpRight, ArrowDownRight,
   Layers, CircleDollarSign, List, Zap, FileText, ChevronDown, ArrowUpDown, Link2
 } from 'lucide-react';
+import TarjetasVault from '../components/TarjetasVault';
 import { useData } from '../context/DataContext';
 import { useTenant } from '../context/TenantContext';
 import { META_MENSUAL_NEGOCIO, COLORES_RANKING } from '../utils/constants';
@@ -499,6 +500,16 @@ const NegocioPage = () => {
 
   // Toggle para mostrar/ocultar facturas ocultas en la lista
   const [mostrarOcultas, setMostrarOcultas] = useState(false);
+
+  // Vault oculto de tarjetas (se abre con long-press en "Ganancia Mes")
+  const [vaultVisible, setVaultVisible] = useState(false);
+  const vaultLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleVaultTouchStart = useCallback(() => {
+    vaultLongPressTimer.current = setTimeout(() => setVaultVisible(true), 2000);
+  }, []);
+  const handleVaultTouchEnd = useCallback(() => {
+    if (vaultLongPressTimer.current) clearTimeout(vaultLongPressTimer.current);
+  }, []);
 
   // =============================================
   // ESTADOS UI
@@ -3526,7 +3537,14 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
                 </div>
               </SimpleCard>
 
-              <div className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 sm:p-5 rounded-xl border border-gray-800/50 flex items-center gap-2 sm:gap-4 overflow-hidden">
+              <div
+                className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 sm:p-5 rounded-xl border border-gray-800/50 flex items-center gap-2 sm:gap-4 overflow-hidden select-none"
+                onMouseDown={handleVaultTouchStart}
+                onMouseUp={handleVaultTouchEnd}
+                onMouseLeave={handleVaultTouchEnd}
+                onTouchStart={handleVaultTouchStart}
+                onTouchEnd={handleVaultTouchEnd}
+              >
                 <div className="p-2 sm:p-3 bg-purple-500/20 rounded-xl text-purple-400 flex-shrink-0">
                   <Calendar size={18} />
                 </div>
@@ -3656,6 +3674,9 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
           </div>
         </main>
       </div>
+
+      {/* Vault oculto de tarjetas */}
+      <TarjetasVault visible={vaultVisible} onClose={() => setVaultVisible(false)} />
     </MotionConfig>
   );
 };

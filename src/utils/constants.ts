@@ -42,4 +42,5 @@ export const STORAGE_KEYS = {
   METAS_FINANCIERAS: 'seyaShop_metasFinancieras',
   PRESUPUESTO: 'seyaShop_presupuesto',
   FACTURAS_OCULTAS: 'seyaShop_facturasOcultas',
+  TARJETAS: 'seyaShop_tarjetas',
 };

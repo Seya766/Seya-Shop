@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import type { ReactNode } from 'react';
 import { doc, setDoc, onSnapshot, writeBatch, waitForPendingWrites, enableNetwork } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera } from '../utils/types';
+import type { Factura, GastoFijo, Transaccion, MetaAhorro, PagoRevendedor, MetaFinanciera, Tarjeta } from '../utils/types';
 import { STORAGE_KEYS } from '../utils/constants';
 import { getColombiaDateOnly } from '../utils/helpers';
 
@@ -60,6 +60,8 @@ interface DataContextType {
   setPresupuestoMensual: (value: number | ((prev: number) => number)) => void;
   facturasOcultas: number[];
   setFacturasOcultas: (value: number[] | ((prev: number[]) => number[])) => void;
+  tarjetas: Tarjeta[];
+  setTarjetas: (value: Tarjeta[] | ((prev: Tarjeta[]) => Tarjeta[])) => void;
   syncStatus: 'synced' | 'syncing' | 'pending';
   descargarBackup: () => void;
   importarBackup: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -76,7 +78,8 @@ const DEFAULT_VALUES = {
   metaAhorro: { monto: 500000, activa: true } as MetaAhorro,
   metasFinancieras: [] as MetaFinanciera[],
   presupuestoMensual: 2000000,
-  facturasOcultas: [] as number[]
+  facturasOcultas: [] as number[],
+  tarjetas: [] as Tarjeta[]
 };
 
 interface DataProviderProps {
@@ -96,6 +99,7 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const [metasFinancieras, setMetasFinancierasState] = useState<MetaFinanciera[]>(DEFAULT_VALUES.metasFinancieras);
   const [presupuestoMensual, setPresupuestoMensualState] = useState<number>(DEFAULT_VALUES.presupuestoMensual);
   const [facturasOcultas, setFacturasOcultasState] = useState<number[]>(DEFAULT_VALUES.facturasOcultas);
+  const [tarjetas, setTarjetasState] = useState<Tarjeta[]>(DEFAULT_VALUES.tarjetas);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'pending'>('synced');
 
   // Track unsubscribe functions for cleanup
@@ -191,6 +195,7 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     setupListener(STORAGE_KEYS.METAS_FINANCIERAS, setMetasFinancierasState, DEFAULT_VALUES.metasFinancieras);
     setupListener(STORAGE_KEYS.PRESUPUESTO, setPresupuestoMensualState, DEFAULT_VALUES.presupuestoMensual);
     setupListener(STORAGE_KEYS.FACTURAS_OCULTAS, setFacturasOcultasState, DEFAULT_VALUES.facturasOcultas);
+    setupListener(STORAGE_KEYS.TARJETAS, setTarjetasState, DEFAULT_VALUES.tarjetas);
 
     // Cleanup on unmount or userId change
     return () => {
@@ -290,11 +295,19 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     });
   }, [saveToFirestore]);
 
+  const setTarjetas = useCallback((value: Tarjeta[] | ((prev: Tarjeta[]) => Tarjeta[])) => {
+    setTarjetasState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      saveToFirestore(STORAGE_KEYS.TARJETAS, newValue);
+      return newValue;
+    });
+  }, [saveToFirestore]);
+
   const descargarBackup = () => {
     try {
       const backupData = {
         facturas, revendedoresOcultos, pagosRevendedores, gastosFijos, transacciones,
-        metaAhorro, metasFinancieras, presupuestoMensual, facturasOcultas,
+        metaAhorro, metasFinancieras, presupuestoMensual, facturasOcultas, tarjetas,
         fechaBackup: getColombiaDateOnly(), userId
       };
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -339,6 +352,7 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
               { key: STORAGE_KEYS.METAS_FINANCIERAS, value: json.metasFinancieras || DEFAULT_VALUES.metasFinancieras },
               { key: STORAGE_KEYS.PRESUPUESTO, value: json.presupuestoMensual || DEFAULT_VALUES.presupuestoMensual },
               { key: STORAGE_KEYS.FACTURAS_OCULTAS, value: json.facturasOcultas || [] },
+              { key: STORAGE_KEYS.TARJETAS, value: json.tarjetas || [] },
             ];
 
             updates.forEach(({ key, value }) => {
@@ -359,6 +373,7 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
             setMetasFinancierasState(json.metasFinancieras || DEFAULT_VALUES.metasFinancieras);
             setPresupuestoMensualState(json.presupuestoMensual || DEFAULT_VALUES.presupuestoMensual);
             setFacturasOcultasState(json.facturasOcultas || []);
+            setTarjetasState(json.tarjetas || []);
 
             alert("Backup restaurado y sincronizado con Firebase.");
           }
@@ -384,6 +399,7 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
       metasFinancieras, setMetasFinancieras,
       presupuestoMensual, setPresupuestoMensual,
       facturasOcultas, setFacturasOcultas,
+      tarjetas, setTarjetas,
       syncStatus,
       descargarBackup, importarBackup,
     }}>

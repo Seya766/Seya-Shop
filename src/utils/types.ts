@@ -199,6 +199,34 @@ export interface EvaluacionFinanciera {
 }
 
 // =============================================
+// TARJETAS Y SERVICIOS DE PAGO
+// =============================================
+
+export type TipoTarjeta = 'credito' | 'debito';
+export type RedTarjeta = 'visa' | 'mastercard' | 'amex' | 'otra';
+
+export interface ServicioPago {
+  id: number;
+  nombre: string; // Ej: "Air-e", "WOM", "Claro", "Netflix"
+  icono: string; // emoji
+}
+
+export interface Tarjeta {
+  id: number;
+  alias: string; // "Nu", "Bancolombia", etc.
+  banco: string;
+  tipo: TipoTarjeta;
+  red: RedTarjeta;
+  ultimos4: string; // últimos 4 dígitos
+  titular: string;
+  numero: string; // número completo (encriptado visualmente)
+  vencimiento: string; // MM/YY
+  cvv: string;
+  color: string; // color para la tarjeta visual
+  servicios: ServicioPago[]; // donde paga con esta tarjeta
+}
+
+// =============================================
 // TIPOS DE CONFIGURACIÓN
 // =============================================
 
