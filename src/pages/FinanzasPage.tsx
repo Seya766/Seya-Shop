@@ -2476,8 +2476,21 @@ const FinanzasPage = () => {
                       else tendencia = 'estable';
                     }
 
-                    // Usar el promedio más realista (últimos 3 meses si hay datos, sino el total)
-                    const promedioMensualReal = promedioUltimos3Meses > 0 ? promedioUltimos3Meses : (saldoTotal / mesesTranscurridos);
+                    // Usar el promedio más realista:
+                    // 1. Si hay historial de meses anteriores, usar ese promedio
+                    // 2. Si solo hay datos del mes actual, usar el aporte de este mes
+                    // 3. Fallback: aportes netos totales / meses transcurridos
+                    const totalAportesNetos = todosAportes.reduce((sum, a) => {
+                      if (a.tipo === 'retiro') return sum - Math.abs(a.monto);
+                      return sum + a.monto;
+                    }, 0);
+                    const promedioMensualReal = promedioUltimos3Meses > 0
+                      ? promedioUltimos3Meses
+                      : aporteMesActual > 0
+                        ? aporteMesActual
+                        : totalAportesNetos > 0
+                          ? totalAportesNetos / mesesTranscurridos
+                          : 0;
 
                     // Si tiene fecha objetivo
                     let mesesHastaObjetivo = Infinity;
