@@ -501,14 +501,26 @@ const NegocioPage = () => {
   // Toggle para mostrar/ocultar facturas ocultas en la lista
   const [mostrarOcultas, setMostrarOcultas] = useState(false);
 
-  // Vault oculto de tarjetas (se abre con long-press en "Ganancia Mes")
+  // Vault oculto de tarjetas (se abre con long-press en icono morado de "Ganancia Mes")
   const [vaultVisible, setVaultVisible] = useState(false);
   const vaultLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleVaultTouchStart = useCallback(() => {
-    vaultLongPressTimer.current = setTimeout(() => setVaultVisible(true), 2000);
+  const vaultTouchMoved = useRef(false);
+  const handleVaultTouchStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+    vaultTouchMoved.current = false;
+    vaultLongPressTimer.current = setTimeout(() => {
+      if (!vaultTouchMoved.current) {
+        if ('vibrate' in navigator) navigator.vibrate(50);
+        setVaultVisible(true);
+      }
+    }, 2000);
+    if ('touches' in e) e.preventDefault();
+  }, []);
+  const handleVaultTouchMove = useCallback(() => {
+    vaultTouchMoved.current = true;
+    if (vaultLongPressTimer.current) { clearTimeout(vaultLongPressTimer.current); vaultLongPressTimer.current = null; }
   }, []);
   const handleVaultTouchEnd = useCallback(() => {
-    if (vaultLongPressTimer.current) clearTimeout(vaultLongPressTimer.current);
+    if (vaultLongPressTimer.current) { clearTimeout(vaultLongPressTimer.current); vaultLongPressTimer.current = null; }
   }, []);
 
   // =============================================
@@ -3539,13 +3551,18 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
 
               <div
                 className="relative bg-gradient-to-br from-[#1a1f33] to-[#0f1219] p-3 sm:p-5 rounded-xl border border-gray-800/50 flex items-center gap-2 sm:gap-4 overflow-hidden select-none"
-                onMouseDown={handleVaultTouchStart}
-                onMouseUp={handleVaultTouchEnd}
-                onMouseLeave={handleVaultTouchEnd}
-                onTouchStart={handleVaultTouchStart}
-                onTouchEnd={handleVaultTouchEnd}
               >
-                <div className="p-2 sm:p-3 bg-purple-500/20 rounded-xl text-purple-400 flex-shrink-0">
+                <div
+                  className="p-2 sm:p-3 bg-purple-500/20 rounded-xl text-purple-400 flex-shrink-0 cursor-pointer"
+                  style={{ touchAction: 'none' }}
+                  onMouseDown={handleVaultTouchStart}
+                  onMouseUp={handleVaultTouchEnd}
+                  onMouseLeave={handleVaultTouchEnd}
+                  onTouchStart={handleVaultTouchStart}
+                  onTouchMove={handleVaultTouchMove}
+                  onTouchEnd={handleVaultTouchEnd}
+                  onContextMenu={e => e.preventDefault()}
+                >
                   <Calendar size={18} />
                 </div>
                 <div className="flex-1 min-w-0">

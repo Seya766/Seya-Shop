@@ -7,7 +7,7 @@ import { formatearDineroCorto, getColombiaISO, getColombiaDateOnly, obtenerHoraC
 import type { Factura, Transaccion, CategoriaGasto, GastoFijo } from '../utils/types';
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'openai/gpt-oss-120b';
 const CHAT_STORAGE_KEY = 'seya-ai-chat';
 
 interface ChatMessage {
@@ -157,7 +157,6 @@ const renderMarkdown = (text: string): React.ReactNode => {
 };
 
 // Tool definitions for Groq function calling
-// NOTE: Optional params use type array ["string","null"] because Llama sometimes sends null for omitted fields
 const AI_TOOLS = [
   {
     type: 'function' as const,
@@ -168,12 +167,12 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre o número del cliente' },
-          telefono: { type: ['string', 'null'], description: 'Teléfono del cliente' },
-          revendedor: { type: ['string', 'null'], description: 'Nombre del revendedor. Si no se especifica, usar "Directo"' },
+          telefono: { type: 'string', description: 'Teléfono del cliente (opcional)' },
+          revendedor: { type: 'string', description: 'Nombre del revendedor. Si no se especifica, usar "Directo"' },
           empresa: { type: 'string', description: 'Nombre del servicio o producto (ej: Wom, Movistar, Samsung)' },
           montoFactura: { type: 'number', description: 'Monto de la factura del proveedor' },
-          porcentaje: { type: ['number', 'null'], description: 'Porcentaje de cobro al cliente (ej: 40 para 40%). Si se da, cobroCliente = montoFactura * porcentaje / 100' },
-          cobroCliente: { type: ['number', 'null'], description: 'Monto directo a cobrar al cliente. Usar solo si no se da porcentaje' },
+          porcentaje: { type: 'number', description: 'Porcentaje de cobro al cliente (ej: 40 para 40%). Si se da, cobroCliente = montoFactura * porcentaje / 100' },
+          cobroCliente: { type: 'number', description: 'Monto directo a cobrar al cliente. Usar solo si no se da porcentaje' },
         },
         required: ['cliente', 'empresa', 'montoFactura'],
       },
@@ -188,15 +187,15 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre del cliente para buscar la factura a modificar' },
-          nuevo_cliente: { type: ['string', 'null'], description: 'Nuevo nombre del cliente' },
-          nuevo_telefono: { type: ['string', 'null'], description: 'Nuevo teléfono' },
-          nuevo_revendedor: { type: ['string', 'null'], description: 'Nuevo revendedor' },
-          nueva_empresa: { type: ['string', 'null'], description: 'Nuevo servicio/producto' },
-          nuevo_montoFactura: { type: ['number', 'null'], description: 'Nuevo monto de factura' },
-          nuevo_cobroCliente: { type: ['number', 'null'], description: 'Nuevo monto a cobrar al cliente' },
-          nuevo_porcentaje: { type: ['number', 'null'], description: 'Nuevo porcentaje de cobro. Recalcula cobroCliente automáticamente' },
-          nueva_fecha: { type: ['string', 'null'], description: 'Nueva fecha de la factura en formato YYYY-MM-DD (ej: 2025-02-03)' },
-          nueva_fecha_cobro: { type: ['string', 'null'], description: 'Cambiar la fecha en que se cobró al cliente, formato YYYY-MM-DD' },
+          nuevo_cliente: { type: 'string', description: 'Nuevo nombre del cliente' },
+          nuevo_telefono: { type: 'string', description: 'Nuevo teléfono' },
+          nuevo_revendedor: { type: 'string', description: 'Nuevo revendedor' },
+          nueva_empresa: { type: 'string', description: 'Nuevo servicio/producto' },
+          nuevo_montoFactura: { type: 'number', description: 'Nuevo monto de factura' },
+          nuevo_cobroCliente: { type: 'number', description: 'Nuevo monto a cobrar al cliente' },
+          nuevo_porcentaje: { type: 'number', description: 'Nuevo porcentaje de cobro. Recalcula cobroCliente automáticamente' },
+          nueva_fecha: { type: 'string', description: 'Nueva fecha de la factura en formato YYYY-MM-DD (ej: 2025-02-03)' },
+          nueva_fecha_cobro: { type: 'string', description: 'Cambiar la fecha en que se cobró al cliente, formato YYYY-MM-DD' },
         },
         required: ['cliente'],
       },
@@ -225,8 +224,8 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           cliente: { type: 'string', description: 'Nombre del cliente que paga' },
-          monto: { type: ['number', 'null'], description: 'Monto del abono. Si no se especifica, se paga el saldo completo' },
-          tipo: { type: ['string', 'null'], enum: ['total', 'parcial'], description: 'Si es pago total o parcial. Default: total' },
+          monto: { type: 'number', description: 'Monto del abono. Si no se especifica, se paga el saldo completo' },
+          tipo: { type: 'string', enum: ['total', 'parcial'], description: 'Si es pago total o parcial. Default: total' },
         },
         required: ['cliente'],
       },
@@ -243,7 +242,7 @@ const AI_TOOLS = [
           descripcion: { type: 'string', description: 'Descripción de la transacción' },
           monto: { type: 'number', description: 'Monto de la transacción' },
           tipo: { type: 'string', enum: ['ingreso', 'gasto'], description: 'Tipo: ingreso o gasto' },
-          categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
+          categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
         },
         required: ['descripcion', 'monto', 'tipo'],
       },
@@ -286,10 +285,10 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           descripcion: { type: 'string', description: 'Descripción de la transacción a buscar' },
-          nueva_descripcion: { type: ['string', 'null'], description: 'Nueva descripción' },
-          nuevo_monto: { type: ['number', 'null'], description: 'Nuevo monto' },
-          nuevo_tipo: { type: ['string', 'null'], enum: ['ingreso', 'gasto'], description: 'Cambiar tipo' },
-          nueva_categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
+          nueva_descripcion: { type: 'string', description: 'Nueva descripción' },
+          nuevo_monto: { type: 'number', description: 'Nuevo monto' },
+          nuevo_tipo: { type: 'string', enum: ['ingreso', 'gasto'], description: 'Cambiar tipo' },
+          nueva_categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
         },
         required: ['descripcion'],
       },
@@ -305,8 +304,8 @@ const AI_TOOLS = [
         properties: {
           nombre: { type: 'string', description: 'Nombre del gasto fijo' },
           monto: { type: 'number', description: 'Monto mensual estimado' },
-          categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
-          diaCorte: { type: ['number', 'null'], description: 'Día del mes en que se paga (1-31). Default: 1' },
+          categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Categoría. Default: otros' },
+          diaCorte: { type: 'number', description: 'Día del mes en que se paga (1-31). Default: 1' },
         },
         required: ['nombre', 'monto'],
       },
@@ -321,10 +320,10 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           nombre: { type: 'string', description: 'Nombre del gasto fijo a buscar' },
-          nuevo_nombre: { type: ['string', 'null'], description: 'Nuevo nombre' },
-          nuevo_monto: { type: ['number', 'null'], description: 'Nuevo monto mensual' },
-          nueva_categoria: { type: ['string', 'null'], enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
-          nuevo_diaCorte: { type: ['number', 'null'], description: 'Nuevo día de corte' },
+          nuevo_nombre: { type: 'string', description: 'Nuevo nombre' },
+          nuevo_monto: { type: 'number', description: 'Nuevo monto mensual' },
+          nueva_categoria: { type: 'string', enum: ['servicios', 'arriendo', 'agua', 'luz', 'internet', 'telefono', 'tv', 'transporte', 'alimentacion', 'mercado', 'salud', 'educacion', 'entretenimiento', 'otros'], description: 'Nueva categoría' },
+          nuevo_diaCorte: { type: 'number', description: 'Nuevo día de corte' },
         },
         required: ['nombre'],
       },
@@ -353,7 +352,7 @@ const AI_TOOLS = [
         type: 'object',
         properties: {
           nombre: { type: 'string', description: 'Nombre del gasto fijo' },
-          montoPagado: { type: ['number', 'null'], description: 'Monto real pagado (si difiere del estimado)' },
+          montoPagado: { type: 'number', description: 'Monto real pagado (si difiere del estimado)' },
         },
         required: ['nombre'],
       },
@@ -1165,7 +1164,7 @@ CÓMO RESPONDER:
           { role: 'system', content: buildSystemPrompt() },
           ...apiMessages,
         ],
-        ...(shouldIncludeTools ? { tools: AI_TOOLS } : {}),
+        ...(shouldIncludeTools ? { tools: AI_TOOLS, tool_choice: 'auto' } : {}),
         temperature: shouldIncludeTools ? 0.3 : 0.7,
         max_tokens: 4096,
       }),
