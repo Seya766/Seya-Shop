@@ -7,7 +7,7 @@ import { formatearDineroCorto, getColombiaISO, getColombiaDateOnly, obtenerHoraC
 import type { Factura, Transaccion, CategoriaGasto, GastoFijo } from '../utils/types';
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
-const GROQ_MODEL = 'openai/gpt-oss-120b';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const CHAT_STORAGE_KEY = 'seya-ai-chat';
 
 interface ChatMessage {
@@ -1166,7 +1166,7 @@ CÓMO RESPONDER:
           ...apiMessages,
         ],
         ...(shouldIncludeTools ? { tools: AI_TOOLS } : {}),
-        temperature: 0.7,
+        temperature: shouldIncludeTools ? 0.3 : 0.7,
         max_tokens: 4096,
       }),
       signal: controller.signal,
