@@ -1028,6 +1028,8 @@ CÓMO RESPONDER:
       /\b(gast[eéo]|compr[eéo]|pagu[eéo])\s+[\d$]/i, // "I spent X"
       /\b(me\s+pagaron|recib[ií])\s+[\d$]/i, // "I received X"
       /[\d.,]+\s*(mil|k)\s+(en|por|de|pesos)/i, // Money amounts with action context
+      /\b(necesito|quiero|podr[ií]as?|hay\s+que|toca|deber[ií]as?|por\s*favor)\s+(que\s+)?(cre[ea]|agreg[au]|registr[ae]|elimin[ae]|borr[ae]|modific[au]|cambi[ae]|marc[au]|pon[eg]|met[ea])/i, // Indirect action requests: "necesito que crees", "quiero que agregues"
+      /\bcre[ea](me|r)?\s+(una?\s+)?(factura|gasto|ingreso|transacci[oó]n)/i, // "crea una factura", "crear factura", "creame una factura"
     ];
 
     // Check for strong query patterns first
@@ -1079,6 +1081,8 @@ CÓMO RESPONDER:
       /\b(ingres[aé]|met[ií]|pon|coloc[aé])\s+(un\s+)?(gasto|ingreso|factura)/i,
       /\$\s*[\d.,]+\s*(mil|k|en|por|de)/i,
       /[\d.,]+\s*(mil|k)\s+(en|por|de|pesos)/i,
+      /\b(necesito|quiero|podr[ií]as?|hay\s+que|toca|por\s*favor)\s+(que\s+)?(cre[ea]|agreg[au]|registr[ae]|elimin[ae]|borr[ae]|modific[au]|cambi[ae]|marc[au])/i,
+      /\bcre[ea](me|r)?\s+(una?\s+)?(factura|gasto|ingreso|transacci[oó]n)/i,
     ];
 
     // Query patterns that indicate the user is ASKING, not DOING
