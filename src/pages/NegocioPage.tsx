@@ -1357,61 +1357,61 @@ const NegocioPage = () => {
     const fechaAbono = fechaAbonoRevendedor || getColombiaDateOnly();
     let remanente = monto;
     const distribucion: DistribucionPago[] = [];
-    
-    setFacturas(prev => {
-      const nuevasFacturas = prev.map(f => ({ ...f }));
-      const facturasPendientesIndices = nuevasFacturas
-        .map((f, index) => ({ ...f, originalIndex: index }))
-        .filter(f => f.revendedor === modalRevendedor.nombre && f.pagadoAProveedor && !f.cobradoACliente)
-        .sort((a, b) => a.id - b.id);
 
-      for (const fTemp of facturasPendientesIndices) {
-        if (remanente <= 0) break;
+    // Compute the new invoices state directly from current facturas (not inside a
+    // functional updater) so that React StrictMode's double-invocation of updater
+    // functions cannot corrupt the `remanente` closure variable.
+    const nuevasFacturas = facturas.map(f => ({ ...f }));
+    const facturasPendientesIndices = nuevasFacturas
+      .map((f, index) => ({ ...f, originalIndex: index }))
+      .filter(f => f.revendedor === modalRevendedor.nombre && f.pagadoAProveedor && !f.cobradoACliente)
+      .sort((a, b) => a.id - b.id);
 
-        const f = nuevasFacturas[fTemp.originalIndex];
-        const saldoAnterior = f.cobroCliente - (f.abono || 0);
-        
-        if (!f.historialAbonos) f.historialAbonos = [];
-        
-        if (remanente >= saldoAnterior) {
-          f.historialAbonos.push({ monto: saldoAnterior, fecha: fechaAbono, tipo: 'pago_completo' });
-          f.abono = f.cobroCliente;
-          f.cobradoACliente = true;
-          f.fechaPromesa = null;
-          
-          distribucion.push({
-            facturaId: f.id,
-            cliente: f.cliente,
-            empresa: f.empresa,
-            montoAplicado: saldoAnterior,
-            saldoAnterior: saldoAnterior,
-            saldoNuevo: 0,
-            completada: true
-          });
-          
-          remanente -= saldoAnterior;
-        } else {
-          f.historialAbonos.push({ monto: remanente, fecha: fechaAbono, tipo: 'abono_parcial' });
-          const saldoNuevo = saldoAnterior - remanente;
-          f.abono = (f.abono || 0) + remanente;
-          f.cobradoACliente = false;
-          
-          distribucion.push({
-            facturaId: f.id,
-            cliente: f.cliente,
-            empresa: f.empresa,
-            montoAplicado: remanente,
-            saldoAnterior: saldoAnterior,
-            saldoNuevo: saldoNuevo,
-            completada: false
-          });
-          
-          remanente = 0;
-        }
+    for (const fTemp of facturasPendientesIndices) {
+      if (remanente <= 0) break;
+
+      const f = nuevasFacturas[fTemp.originalIndex];
+      const saldoAnterior = f.cobroCliente - (f.abono || 0);
+
+      if (remanente >= saldoAnterior) {
+        f.historialAbonos = [...(f.historialAbonos || []), { monto: saldoAnterior, fecha: fechaAbono, tipo: 'pago_completo' as const }];
+        f.abono = f.cobroCliente;
+        f.cobradoACliente = true;
+        f.fechaPromesa = null;
+
+        distribucion.push({
+          facturaId: f.id,
+          cliente: f.cliente,
+          empresa: f.empresa,
+          montoAplicado: saldoAnterior,
+          saldoAnterior: saldoAnterior,
+          saldoNuevo: 0,
+          completada: true
+        });
+
+        remanente -= saldoAnterior;
+      } else {
+        f.historialAbonos = [...(f.historialAbonos || []), { monto: remanente, fecha: fechaAbono, tipo: 'abono_parcial' as const }];
+        const saldoNuevo = saldoAnterior - remanente;
+        f.abono = (f.abono || 0) + remanente;
+        f.cobradoACliente = false;
+
+        distribucion.push({
+          facturaId: f.id,
+          cliente: f.cliente,
+          empresa: f.empresa,
+          montoAplicado: remanente,
+          saldoAnterior: saldoAnterior,
+          saldoNuevo: saldoNuevo,
+          completada: false
+        });
+
+        remanente = 0;
       }
-      return nuevasFacturas;
-    });
-    
+    }
+
+    setFacturas(nuevasFacturas);
+
     // Guardar registro del pago
     const nuevoPago: PagoRevendedor = {
       id: Date.now(),
@@ -1421,11 +1421,11 @@ const NegocioPage = () => {
       fechaRegistro: getColombiaISO(),
       distribucion: distribucion
     };
-    
+
     setPagosRevendedores(prev => [nuevoPago, ...prev]);
-    
+
     setModalRevendedor({ visible: false, nombre: '', deudaTotal: 0 });
-  }, [montoAbonoRevendedor, fechaAbonoRevendedor, modalRevendedor.nombre, setFacturas, setPagosRevendedores]);
+  }, [montoAbonoRevendedor, fechaAbonoRevendedor, modalRevendedor.nombre, facturas, setFacturas, setPagosRevendedores]);
 
   const enviarRecordatorio = useCallback((f: Factura) => {
     const saldo = f.cobroCliente - (f.abono || 0);
@@ -2069,10 +2069,35 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
   }, [userId]);
 
   const eliminarPagoRevendedor = useCallback((pagoId: number) => {
-    if (window.confirm('¿Eliminar este registro de pago? (Las facturas no se modificarán)')) {
-      setPagosRevendedores(prev => prev.filter(p => p.id !== pagoId));
+    const pago = pagosRevendedores.find(p => p.id === pagoId);
+    if (!pago) return;
+
+    if (!window.confirm('¿Eliminar este registro de pago? Los abonos aplicados a las facturas también serán revertidos.')) return;
+
+    // Revert each invoice that was part of this payment's distribution
+    if (pago.distribucion?.length > 0) {
+      const nuevasFacturas = facturas.map(f => {
+        const dist = pago.distribucion.find(d => d.facturaId === f.id);
+        if (!dist) return f;
+
+        // Remove the matching historial entry (first occurrence with same amount and date)
+        const nuevoHistorial = [...(f.historialAbonos || [])];
+        const idx = nuevoHistorial.findIndex(h => h.monto === dist.montoAplicado && h.fecha === pago.fecha);
+        if (idx !== -1) nuevoHistorial.splice(idx, 1);
+
+        const nuevoTotalAbono = nuevoHistorial.reduce((sum, h) => sum + h.monto, 0);
+        return {
+          ...f,
+          historialAbonos: nuevoHistorial,
+          abono: nuevoTotalAbono,
+          cobradoACliente: nuevoTotalAbono >= f.cobroCliente,
+        };
+      });
+      setFacturas(nuevasFacturas);
     }
-  }, [setPagosRevendedores]);
+
+    setPagosRevendedores(prev => prev.filter(p => p.id !== pagoId));
+  }, [pagosRevendedores, facturas, setFacturas, setPagosRevendedores]);
 
   // Pagos filtrados del revendedor actual
   const pagosDelRevendedor = useMemo(() => {
