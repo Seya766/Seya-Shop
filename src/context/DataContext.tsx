@@ -102,8 +102,6 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   const isReceivingFromFirebase = useRef(false);
   // Track unsubscribe functions for cleanup
   const unsubscribesRef = useRef<(() => void)[]>([]);
-  // Track if listeners are currently being set up (prevents duplicate listeners in StrictMode)
-  const isSettingUpListeners = useRef(false);
 
   // Force Firebase to reconnect and sync fresh data
   const forceSync = useCallback(async () => {
@@ -163,78 +161,82 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
   useEffect(() => {
     if (!userId) return;
 
-    // Prevent duplicate listeners (React StrictMode calls useEffect twice)
-    if (isSettingUpListeners.current) return;
-    isSettingUpListeners.current = true;
+    let active = true;
 
-    // Clean up previous listeners
+    // Clean up any previous listeners immediately before re-subscribing
     unsubscribesRef.current.forEach(unsub => unsub());
     unsubscribesRef.current = [];
 
-    const setupListener = <T,>(
-      key: string,
-      setter: React.Dispatch<React.SetStateAction<T>>,
-      defaultValue: T,
-      transform?: (value: T) => T
-    ) => {
-      const tenantKey = getTenantKey(key, userId);
-      const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
+    // Defer subscription by one tick so Firebase can fully process the unsubscribes.
+    // Without this delay, React StrictMode's rapid unmount→remount causes
+    // "Target ID already exists" errors because onSnapshot re-registers before
+    // the SDK has cleaned up the previous targets.
+    const timerId = setTimeout(() => {
+      if (!active) return;
 
-      // includeMetadataChanges ensures we get updates when data syncs from server
-      const unsub = onSnapshot(docRef, { includeMetadataChanges: true }, (snap) => {
-        const fromCache = snap.metadata.fromCache;
-        const hasPendingWrites = snap.metadata.hasPendingWrites;
+      const setupListener = <T,>(
+        key: string,
+        setter: React.Dispatch<React.SetStateAction<T>>,
+        defaultValue: T,
+        transform?: (value: T) => T
+      ) => {
+        const tenantKey = getTenantKey(key, userId);
+        const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
 
-        // Always update state to ensure sync across devices
-        isReceivingFromFirebase.current = true;
+        // includeMetadataChanges ensures we get updates when data syncs from server
+        const unsub = onSnapshot(docRef, { includeMetadataChanges: true }, (snap) => {
+          if (!active) return;
 
-        if (snap.exists()) {
-          let value = snap.data().value as T;
-          if (transform) {
-            value = transform(value);
+          const fromCache = snap.metadata.fromCache;
+          const hasPendingWrites = snap.metadata.hasPendingWrites;
+
+          isReceivingFromFirebase.current = true;
+
+          if (snap.exists()) {
+            let value = snap.data().value as T;
+            if (transform) {
+              value = transform(value);
+            }
+            setter(value);
+          } else {
+            setter(defaultValue);
           }
-          setter(value);
-        } else {
-          setter(defaultValue);
-        }
-        setLoading(false);
+          setLoading(false);
 
-        // Update sync status
-        if (hasPendingWrites) {
-          setSyncStatus('syncing');
-        } else if (!fromCache) {
-          setSyncStatus('synced');
-        }
+          if (hasPendingWrites) {
+            setSyncStatus('syncing');
+          } else if (!fromCache) {
+            setSyncStatus('synced');
+          }
 
-        // Reset flag after React processes the state update
-        requestAnimationFrame(() => {
-          isReceivingFromFirebase.current = false;
+          requestAnimationFrame(() => {
+            isReceivingFromFirebase.current = false;
+          });
+        }, (error) => {
+          console.error(`Error listening to ${key}:`, error);
+          setLoading(false);
+          setSyncStatus('pending');
         });
-      }, (error) => {
-        console.error(`Error listening to ${key}:`, error);
-        setLoading(false);
-        setSyncStatus('pending');
-      });
 
-      unsubscribesRef.current.push(unsub);
-    };
+        unsubscribesRef.current.push(unsub);
+      };
 
-    // Set up listeners for all data types
-    setupListener(STORAGE_KEYS.FACTURAS, setFacturasState, DEFAULT_VALUES.facturas, corregirIntegridadFacturas);
-    setupListener(STORAGE_KEYS.REVENDEDORES_OCULTOS, setRevendedoresOcultosState, DEFAULT_VALUES.revendedoresOcultos);
-    setupListener(STORAGE_KEYS.PAGOS_REVENDEDORES, setPagosRevendedoresState, DEFAULT_VALUES.pagosRevendedores);
-    setupListener(STORAGE_KEYS.GASTOS_FIJOS, setGastosFijosState, DEFAULT_VALUES.gastosFijos);
-    setupListener(STORAGE_KEYS.TRANSACCIONES, setTransaccionesState, DEFAULT_VALUES.transacciones);
-    setupListener(STORAGE_KEYS.META_AHORRO, setMetaAhorroState, DEFAULT_VALUES.metaAhorro);
-    setupListener(STORAGE_KEYS.METAS_FINANCIERAS, setMetasFinancierasState, DEFAULT_VALUES.metasFinancieras);
-    setupListener(STORAGE_KEYS.PRESUPUESTO, setPresupuestoMensualState, DEFAULT_VALUES.presupuestoMensual);
-    setupListener(STORAGE_KEYS.FACTURAS_OCULTAS, setFacturasOcultasState, DEFAULT_VALUES.facturasOcultas);
+      setupListener(STORAGE_KEYS.FACTURAS, setFacturasState, DEFAULT_VALUES.facturas, corregirIntegridadFacturas);
+      setupListener(STORAGE_KEYS.REVENDEDORES_OCULTOS, setRevendedoresOcultosState, DEFAULT_VALUES.revendedoresOcultos);
+      setupListener(STORAGE_KEYS.PAGOS_REVENDEDORES, setPagosRevendedoresState, DEFAULT_VALUES.pagosRevendedores);
+      setupListener(STORAGE_KEYS.GASTOS_FIJOS, setGastosFijosState, DEFAULT_VALUES.gastosFijos);
+      setupListener(STORAGE_KEYS.TRANSACCIONES, setTransaccionesState, DEFAULT_VALUES.transacciones);
+      setupListener(STORAGE_KEYS.META_AHORRO, setMetaAhorroState, DEFAULT_VALUES.metaAhorro);
+      setupListener(STORAGE_KEYS.METAS_FINANCIERAS, setMetasFinancierasState, DEFAULT_VALUES.metasFinancieras);
+      setupListener(STORAGE_KEYS.PRESUPUESTO, setPresupuestoMensualState, DEFAULT_VALUES.presupuestoMensual);
+      setupListener(STORAGE_KEYS.FACTURAS_OCULTAS, setFacturasOcultasState, DEFAULT_VALUES.facturasOcultas);
+    }, 0);
 
-    // Cleanup on unmount or userId change
     return () => {
+      active = false;
+      clearTimeout(timerId);
       unsubscribesRef.current.forEach(unsub => unsub());
       unsubscribesRef.current = [];
-      isSettingUpListeners.current = false;
     };
   }, [userId]);
 
