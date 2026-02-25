@@ -1364,7 +1364,7 @@ const NegocioPage = () => {
     const nuevasFacturas = facturas.map(f => ({ ...f }));
     const facturasPendientesIndices = nuevasFacturas
       .map((f, index) => ({ ...f, originalIndex: index }))
-      .filter(f => f.revendedor === modalRevendedor.nombre && f.pagadoAProveedor && !f.cobradoACliente)
+      .filter(f => f.revendedor === modalRevendedor.nombre && f.pagadoAProveedor && !f.cobradoACliente && !facturasOcultas.includes(f.id))
       .sort((a, b) => a.id - b.id);
 
     for (const fTemp of facturasPendientesIndices) {
@@ -1425,7 +1425,7 @@ const NegocioPage = () => {
     setPagosRevendedores(prev => [nuevoPago, ...prev]);
 
     setModalRevendedor({ visible: false, nombre: '', deudaTotal: 0 });
-  }, [montoAbonoRevendedor, fechaAbonoRevendedor, modalRevendedor.nombre, facturas, setFacturas, setPagosRevendedores]);
+  }, [montoAbonoRevendedor, fechaAbonoRevendedor, modalRevendedor.nombre, facturas, facturasOcultas, setFacturas, setPagosRevendedores]);
 
   const enviarRecordatorio = useCallback((f: Factura) => {
     const saldo = f.cobroCliente - (f.abono || 0);
