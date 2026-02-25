@@ -2069,10 +2069,35 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
   }, [userId]);
 
   const eliminarPagoRevendedor = useCallback((pagoId: number) => {
-    if (window.confirm('¿Eliminar este registro de pago? (Las facturas no se modificarán)')) {
-      setPagosRevendedores(prev => prev.filter(p => p.id !== pagoId));
+    const pago = pagosRevendedores.find(p => p.id === pagoId);
+    if (!pago) return;
+
+    if (!window.confirm('¿Eliminar este registro de pago? Los abonos aplicados a las facturas también serán revertidos.')) return;
+
+    // Revert each invoice that was part of this payment's distribution
+    if (pago.distribucion?.length > 0) {
+      const nuevasFacturas = facturas.map(f => {
+        const dist = pago.distribucion.find(d => d.facturaId === f.id);
+        if (!dist) return f;
+
+        // Remove the matching historial entry (first occurrence with same amount and date)
+        const nuevoHistorial = [...(f.historialAbonos || [])];
+        const idx = nuevoHistorial.findIndex(h => h.monto === dist.montoAplicado && h.fecha === pago.fecha);
+        if (idx !== -1) nuevoHistorial.splice(idx, 1);
+
+        const nuevoTotalAbono = nuevoHistorial.reduce((sum, h) => sum + h.monto, 0);
+        return {
+          ...f,
+          historialAbonos: nuevoHistorial,
+          abono: nuevoTotalAbono,
+          cobradoACliente: nuevoTotalAbono >= f.cobroCliente,
+        };
+      });
+      setFacturas(nuevasFacturas);
     }
-  }, [setPagosRevendedores]);
+
+    setPagosRevendedores(prev => prev.filter(p => p.id !== pagoId));
+  }, [pagosRevendedores, facturas, setFacturas, setPagosRevendedores]);
 
   // Pagos filtrados del revendedor actual
   const pagosDelRevendedor = useMemo(() => {
