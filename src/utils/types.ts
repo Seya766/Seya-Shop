@@ -153,6 +153,7 @@ export interface Bolsillo {
   saldo: number;
   tasaRendimientoAnual: number; // % EA (Nu ~11.5%, efectivo 0%)
   historialAportes: AporteMeta[];
+  fechaApertura?: string; // YYYY-MM-DD, usado para CDTs para calcular rendimiento estimado
 }
 
 export interface MetaFinanciera {
