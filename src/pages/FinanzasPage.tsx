@@ -98,6 +98,7 @@ const FinanzasPage = () => {
   // Tipos de bolsillos
   const TIPOS_BOLSILLO = [
     { tipo: 'nu', nombre: 'Nu Bank', icono: '💜', tasaDefault: 11.5 },
+    { tipo: 'cdt', nombre: 'CDT', icono: '📈', tasaDefault: 11.0 },
     { tipo: 'efectivo', nombre: 'Efectivo', icono: '💵', tasaDefault: 0 },
     { tipo: 'banco', nombre: 'Otro Banco', icono: '🏦', tasaDefault: 0 },
     { tipo: 'otro', nombre: 'Otro', icono: '📦', tasaDefault: 0 },
@@ -2672,15 +2673,15 @@ const FinanzasPage = () => {
                         {/* Lista de Bolsillos */}
                         <div className="space-y-2 mb-4">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-400">Bolsillos</span>
+                            <span className="text-xs font-medium text-gray-400">Bolsillos ({meta.bolsillos.length})</span>
                             <button
                               onClick={() => {
                                 setFormBolsillo({ nombre: '', tipo: 'nu', saldo: '', tasaRendimientoAnual: '11.5' });
                                 setModalBolsillo({ visible: true, meta: metaOriginal, bolsillo: null });
                               }}
-                              className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                              className="text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 hover:text-emerald-300 flex items-center gap-1 px-2 py-1 rounded-lg transition-all border border-emerald-500/30"
                             >
-                              <Plus size={12} /> Agregar
+                              <Plus size={11} /> Nuevo bolsillo
                             </button>
                           </div>
                           {meta.bolsillos.map(bolsillo => {
@@ -4164,7 +4165,7 @@ const FinanzasPage = () => {
               {/* Tipo de bolsillo */}
               <div>
                 <label className="text-xs text-gray-500 block mb-1.5 font-medium">Tipo de bolsillo</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {TIPOS_BOLSILLO.map(tipo => (
                     <button
                       key={tipo.tipo}
@@ -4223,7 +4224,7 @@ const FinanzasPage = () => {
                   value={formBolsillo.tasaRendimientoAnual}
                   onChange={e => setFormBolsillo({...formBolsillo, tasaRendimientoAnual: e.target.value.replace(/[^0-9.]/g, '')})}
                 />
-                <p className="text-xs text-gray-500 mt-1">Nu ≈ 11.5%, Efectivo = 0%</p>
+                <p className="text-xs text-gray-500 mt-1">Nu ≈ 11.5%, CDT ≈ 10–14%, Efectivo = 0%</p>
               </div>
 
               <div className="flex gap-3 pt-2">

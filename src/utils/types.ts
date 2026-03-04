@@ -149,7 +149,7 @@ export interface Bolsillo {
   id: number;
   nombre: string;
   icono: string; // emoji (💜 Nu, 💵 Efectivo, 🏦 Banco, etc)
-  tipo: 'nu' | 'efectivo' | 'banco' | 'otro';
+  tipo: 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro';
   saldo: number;
   tasaRendimientoAnual: number; // % EA (Nu ~11.5%, efectivo 0%)
   historialAportes: AporteMeta[];
