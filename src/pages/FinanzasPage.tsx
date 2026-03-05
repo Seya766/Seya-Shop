@@ -2766,15 +2766,23 @@ const FinanzasPage = () => {
                                   const fechaAp = bolsillo.fechaApertura ? new Date(bolsillo.fechaApertura + 'T00:00:00') : null;
                                   const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
                                   const diasTotales = fechaVenc && fechaAp ? Math.ceil((fechaVenc.getTime() - fechaAp.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                                  const diasTranscurridos = fechaAp ? Math.ceil((hoy.getTime() - fechaAp.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                  // No contar el día de apertura para el cálculo de intereses
+                                  const diasTranscurridos = fechaAp ? Math.max(0, Math.floor((hoy.getTime() - fechaAp.getTime()) / (1000 * 60 * 60 * 24)) - 1) : null;
                                   const progresoCdt = diasTotales && diasTotales > 0 ? Math.min(100, Math.max(0, ((diasTranscurridos || 0) / diasTotales) * 100)) : 0;
                                   const montoIni = bolsillo.montoInicial || bolsillo.saldo;
-                                  const rendimientoEsperado = diasTotales && diasTotales > 0
-                                    ? montoIni * (bolsillo.tasaRendimientoAnual / 100) * (diasTotales / 365)
+                                  const tasa = bolsillo.tasaRendimientoAnual / 100;
+                                  // Fórmula E.A. (interés compuesto): Capital * ((1 + EA)^(días/365) - 1)
+                                  const rendimientoBrutoEsperado = diasTotales && diasTotales > 0
+                                    ? montoIni * (Math.pow(1 + tasa, diasTotales / 365) - 1)
                                     : 0;
-                                  const rendimientoActual = diasTranscurridos && diasTranscurridos > 0
-                                    ? montoIni * (bolsillo.tasaRendimientoAnual / 100) * (diasTranscurridos / 365)
+                                  const rendimientoBrutoActual = diasTranscurridos && diasTranscurridos > 0
+                                    ? montoIni * (Math.pow(1 + tasa, diasTranscurridos / 365) - 1)
                                     : 0;
+                                  // Retención en la fuente: 4% sobre rendimientos
+                                  const retencionActual = rendimientoBrutoActual * 0.04;
+                                  const rendimientoNetoActual = rendimientoBrutoActual - retencionActual;
+                                  const retencionEsperada = rendimientoBrutoEsperado * 0.04;
+                                  const rendimientoNetoEsperado = rendimientoBrutoEsperado - retencionEsperada;
                                   const vencido = diasRestantes !== null && diasRestantes <= 0;
 
                                   return (
@@ -2816,16 +2824,42 @@ const FinanzasPage = () => {
                                           </div>
                                         </div>
                                       )}
-                                      {rendimientoActual > 0 && (
-                                        <div className="grid grid-cols-2 gap-2 mt-1">
-                                          <div className="bg-green-500/10 rounded-lg p-1.5 text-center">
-                                            <p className="text-[10px] text-gray-500">Ganado hasta hoy</p>
-                                            <p className="text-xs font-mono text-green-400">+{formatearDineroCorto(rendimientoActual)}</p>
+                                      {rendimientoBrutoActual > 0 && (
+                                        <div className="space-y-1.5 mt-1">
+                                          {/* Rendimiento actual */}
+                                          <div className="bg-green-500/10 rounded-lg p-2">
+                                            <p className="text-[10px] text-gray-500 mb-1">Rendimiento actual</p>
+                                            <div className="flex justify-between text-xs">
+                                              <span className="text-gray-400">Bruto</span>
+                                              <span className="font-mono text-green-400">+{formatearDineroCorto(rendimientoBrutoActual)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-xs">
+                                              <span className="text-gray-400">Ret. fuente (4%)</span>
+                                              <span className="font-mono text-red-400/70">-{formatearDineroCorto(retencionActual)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-xs pt-1 border-t border-gray-700/30 mt-1">
+                                              <span className="text-gray-300 font-medium">Neto</span>
+                                              <span className="font-mono text-green-400 font-medium">+{formatearDineroCorto(rendimientoNetoActual)}</span>
+                                            </div>
                                           </div>
-                                          <div className="bg-blue-500/10 rounded-lg p-1.5 text-center">
-                                            <p className="text-[10px] text-gray-500">Total al vencer</p>
-                                            <p className="text-xs font-mono text-blue-400">+{formatearDineroCorto(rendimientoEsperado)}</p>
-                                          </div>
+                                          {/* Rendimiento esperado al vencer */}
+                                          {rendimientoBrutoEsperado > 0 && (
+                                            <div className="bg-blue-500/10 rounded-lg p-2">
+                                              <p className="text-[10px] text-gray-500 mb-1">Al vencimiento</p>
+                                              <div className="flex justify-between text-xs">
+                                                <span className="text-gray-400">Bruto</span>
+                                                <span className="font-mono text-blue-400">+{formatearDineroCorto(rendimientoBrutoEsperado)}</span>
+                                              </div>
+                                              <div className="flex justify-between text-xs">
+                                                <span className="text-gray-400">Ret. fuente (4%)</span>
+                                                <span className="font-mono text-red-400/70">-{formatearDineroCorto(retencionEsperada)}</span>
+                                              </div>
+                                              <div className="flex justify-between text-xs pt-1 border-t border-gray-700/30 mt-1">
+                                                <span className="text-gray-300 font-medium">Neto</span>
+                                                <span className="font-mono text-blue-400 font-medium">+{formatearDineroCorto(rendimientoNetoEsperado)}</span>
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
                                       )}
                                     </div>
