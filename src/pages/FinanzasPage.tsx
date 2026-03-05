@@ -241,8 +241,9 @@ const FinanzasPage = () => {
     }
     
     // Crear bolsillo desde datos legacy
+    // Use deterministic ID based on meta.id so it's stable across calls
     const bolsilloLegacy: Bolsillo = {
-      id: Date.now(),
+      id: meta.id + 1,
       nombre: meta.cajitaNubank || 'Nu Bank',
       icono: '💜',
       tipo: 'nu',
