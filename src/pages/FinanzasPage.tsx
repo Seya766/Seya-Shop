@@ -77,6 +77,7 @@ const FinanzasPage = () => {
     nombre: '', icono: '🚗', montoObjetivo: '', montoActual: '',
     fechaObjetivo: '', cajitaNubank: '', tasaRendimientoAnual: '11.5',
     tipoBolsillo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro',
+    fechaAperturaCdt: '', fechaVencimientoCdt: '', entidadBancaria: '',
     aporteMensualPlaneado: '', prioridad: 'media' as 'alta' | 'media' | 'baja', color: 'emerald'
   });
   const [formAporte, setFormAporte] = useState({
@@ -88,7 +89,8 @@ const FinanzasPage = () => {
   // Estados para bolsillos
   const [modalBolsillo, setModalBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
   const [formBolsillo, setFormBolsillo] = useState({
-    nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro', saldo: '', tasaRendimientoAnual: '11.5'
+    nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro', saldo: '', tasaRendimientoAnual: '11.5',
+    fechaApertura: '', fechaVencimiento: '', montoInicial: '', entidadBancaria: ''
   });
   const [modalAporteBolsillo, setModalAporteBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
 
@@ -2387,6 +2389,7 @@ const FinanzasPage = () => {
                   nombre: '', icono: '🚗', montoObjetivo: '', montoActual: '',
                   fechaObjetivo: '', cajitaNubank: '', tasaRendimientoAnual: '11.5',
                   tipoBolsillo: 'nu',
+                  fechaAperturaCdt: '', fechaVencimientoCdt: '', entidadBancaria: '',
                   aporteMensualPlaneado: '', prioridad: 'media', color: 'emerald'
                 });
                 setModalMeta(true);
@@ -2678,7 +2681,7 @@ const FinanzasPage = () => {
                             <span className="text-xs font-medium text-gray-400">Bolsillos</span>
                             <button
                               onClick={() => {
-                                setFormBolsillo({ nombre: '', tipo: 'nu', saldo: '', tasaRendimientoAnual: '11.5' });
+                                setFormBolsillo({ nombre: '', tipo: 'nu', saldo: '', tasaRendimientoAnual: '11.5', fechaApertura: '', fechaVencimiento: '', montoInicial: '', entidadBancaria: '' });
                                 setModalBolsillo({ visible: true, meta: metaOriginal, bolsillo: null });
                               }}
                               className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
@@ -2736,7 +2739,11 @@ const FinanzasPage = () => {
                                         nombre: bolsillo.nombre,
                                         tipo: bolsillo.tipo,
                                         saldo: bolsillo.saldo.toString(),
-                                        tasaRendimientoAnual: bolsillo.tasaRendimientoAnual.toString()
+                                        tasaRendimientoAnual: bolsillo.tasaRendimientoAnual.toString(),
+                                        fechaApertura: bolsillo.fechaApertura || '',
+                                        fechaVencimiento: bolsillo.fechaVencimiento || '',
+                                        montoInicial: bolsillo.montoInicial?.toString() || '',
+                                        entidadBancaria: bolsillo.entidadBancaria || ''
                                       });
                                       setModalBolsillo({ visible: true, meta: metaOriginal, bolsillo });
                                     }}
@@ -2752,6 +2759,78 @@ const FinanzasPage = () => {
                                     <TrendingUp size={10} /> +{formatearDineroCorto(rendBolsillo)}/mes
                                   </p>
                                 )}
+                                {/* Info CDT */}
+                                {bolsillo.tipo === 'cdt' && (() => {
+                                  const hoy = new Date();
+                                  const fechaVenc = bolsillo.fechaVencimiento ? new Date(bolsillo.fechaVencimiento + 'T00:00:00') : null;
+                                  const fechaAp = bolsillo.fechaApertura ? new Date(bolsillo.fechaApertura + 'T00:00:00') : null;
+                                  const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                  const diasTotales = fechaVenc && fechaAp ? Math.ceil((fechaVenc.getTime() - fechaAp.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                  const diasTranscurridos = fechaAp ? Math.ceil((hoy.getTime() - fechaAp.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                  const progresoCdt = diasTotales && diasTotales > 0 ? Math.min(100, Math.max(0, ((diasTranscurridos || 0) / diasTotales) * 100)) : 0;
+                                  const montoIni = bolsillo.montoInicial || bolsillo.saldo;
+                                  const rendimientoEsperado = diasTotales && diasTotales > 0
+                                    ? montoIni * (bolsillo.tasaRendimientoAnual / 100) * (diasTotales / 365)
+                                    : 0;
+                                  const rendimientoActual = diasTranscurridos && diasTranscurridos > 0
+                                    ? montoIni * (bolsillo.tasaRendimientoAnual / 100) * (diasTranscurridos / 365)
+                                    : 0;
+                                  const vencido = diasRestantes !== null && diasRestantes <= 0;
+
+                                  return (
+                                    <div className="mt-2 pt-2 border-t border-gray-700/30 space-y-1.5">
+                                      {bolsillo.entidadBancaria && (
+                                        <p className="text-xs text-gray-400 flex items-center gap-1">
+                                          🏦 {bolsillo.entidadBancaria}
+                                        </p>
+                                      )}
+                                      {bolsillo.montoInicial && bolsillo.montoInicial > 0 && (
+                                        <p className="text-xs text-gray-400">
+                                          Capital inicial: <span className="font-mono">{formatearDineroCorto(bolsillo.montoInicial)}</span>
+                                        </p>
+                                      )}
+                                      {fechaAp && (
+                                        <p className="text-xs text-gray-500">
+                                          Apertura: {fechaAp.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </p>
+                                      )}
+                                      {fechaVenc && (
+                                        <p className={`text-xs ${vencido ? 'text-amber-400 font-medium' : 'text-gray-500'}`}>
+                                          {vencido ? '⚠️ Venció' : 'Vence'}: {fechaVenc.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                          {diasRestantes !== null && !vencido && (
+                                            <span className="text-cyan-400 ml-1">({diasRestantes} días)</span>
+                                          )}
+                                        </p>
+                                      )}
+                                      {diasTotales && diasTotales > 0 && (
+                                        <div>
+                                          <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-gray-500">Progreso del CDT</span>
+                                            <span className="text-cyan-400">{progresoCdt.toFixed(0)}%</span>
+                                          </div>
+                                          <div className="w-full bg-gray-700/50 rounded-full h-1.5">
+                                            <div
+                                              className={`h-1.5 rounded-full transition-all ${vencido ? 'bg-amber-400' : 'bg-cyan-400'}`}
+                                              style={{ width: `${progresoCdt}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                      {rendimientoActual > 0 && (
+                                        <div className="grid grid-cols-2 gap-2 mt-1">
+                                          <div className="bg-green-500/10 rounded-lg p-1.5 text-center">
+                                            <p className="text-[10px] text-gray-500">Ganado hasta hoy</p>
+                                            <p className="text-xs font-mono text-green-400">+{formatearDineroCorto(rendimientoActual)}</p>
+                                          </div>
+                                          <div className="bg-blue-500/10 rounded-lg p-1.5 text-center">
+                                            <p className="text-[10px] text-gray-500">Total al vencer</p>
+                                            <p className="text-xs font-mono text-blue-400">+{formatearDineroCorto(rendimientoEsperado)}</p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             );
                           })}
@@ -2891,6 +2970,7 @@ const FinanzasPage = () => {
                                 cajitaNubank: '',
                                 tasaRendimientoAnual: '0',
                                 tipoBolsillo: 'nu',
+                                fechaAperturaCdt: '', fechaVencimientoCdt: '', entidadBancaria: '',
                                 aporteMensualPlaneado: meta.aporteMensualPlaneado.toString(),
                                 prioridad: meta.prioridad,
                                 color: meta.color
@@ -3541,6 +3621,42 @@ const FinanzasPage = () => {
                 />
               </div>
 
+              {/* Campos CDT en creación de meta */}
+              {formMeta.tipoBolsillo === 'cdt' && (
+                <>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Entidad bancaria</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Bancolombia, Davivienda..."
+                      className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                      value={formMeta.entidadBancaria}
+                      onChange={e => setFormMeta({...formMeta, entidadBancaria: e.target.value})}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1.5 font-medium">Fecha apertura</label>
+                      <input
+                        type="date"
+                        className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                        value={formMeta.fechaAperturaCdt}
+                        onChange={e => setFormMeta({...formMeta, fechaAperturaCdt: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1.5 font-medium">Fecha vencimiento</label>
+                      <input
+                        type="date"
+                        className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                        value={formMeta.fechaVencimientoCdt}
+                        onChange={e => setFormMeta({...formMeta, fechaVencimientoCdt: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               {/* Rendimiento y aporte */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -3633,8 +3749,14 @@ const FinanzasPage = () => {
                         fecha: getColombiaDateOnly(),
                         monto: saldoInicial,
                         tipo: 'aporte',
-                        nota: 'Saldo inicial'
-                      }] : []
+                        nota: formMeta.tipoBolsillo === 'cdt' ? 'Apertura CDT' : 'Saldo inicial'
+                      }] : [],
+                      ...(formMeta.tipoBolsillo === 'cdt' ? {
+                        fechaApertura: formMeta.fechaAperturaCdt || getColombiaDateOnly(),
+                        fechaVencimiento: formMeta.fechaVencimientoCdt || '',
+                        montoInicial: saldoInicial,
+                        entidadBancaria: formMeta.entidadBancaria || '',
+                      } : {})
                     };
                     
                     const nuevaMeta: MetaFinanciera = {
@@ -4245,6 +4367,54 @@ const FinanzasPage = () => {
                 </div>
               )}
 
+              {/* Campos específicos CDT */}
+              {formBolsillo.tipo === 'cdt' && (
+                <>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Entidad bancaria</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Bancolombia, Davivienda..."
+                      className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                      value={formBolsillo.entidadBancaria}
+                      onChange={e => setFormBolsillo({...formBolsillo, entidadBancaria: e.target.value})}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1.5 font-medium">Fecha apertura</label>
+                      <input
+                        type="date"
+                        className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                        value={formBolsillo.fechaApertura}
+                        onChange={e => setFormBolsillo({...formBolsillo, fechaApertura: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1.5 font-medium">Fecha vencimiento</label>
+                      <input
+                        type="date"
+                        className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                        value={formBolsillo.fechaVencimiento}
+                        onChange={e => setFormBolsillo({...formBolsillo, fechaVencimiento: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  {!esEdicion && (
+                    <div>
+                      <label className="text-xs text-gray-500 block mb-1.5 font-medium">Monto inicial del CDT</label>
+                      <input
+                        type="tel"
+                        placeholder="5,000,000"
+                        className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 font-mono focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                        value={formBolsillo.montoInicial}
+                        onChange={e => setFormBolsillo({...formBolsillo, montoInicial: e.target.value.replace(/[^0-9]/g, '')})}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
               {/* Tasa de rendimiento */}
               <div>
                 <label className="text-xs text-gray-500 block mb-1.5 font-medium">Tasa de rendimiento anual (%)</label>
@@ -4255,7 +4425,9 @@ const FinanzasPage = () => {
                   value={formBolsillo.tasaRendimientoAnual}
                   onChange={e => setFormBolsillo({...formBolsillo, tasaRendimientoAnual: e.target.value.replace(/[^0-9.]/g, '')})}
                 />
-                <p className="text-xs text-gray-500 mt-1">Nu ≈ 11.5%, Efectivo = 0%</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formBolsillo.tipo === 'cdt' ? 'CDT ≈ 10-12% EA según plazo y entidad' : 'Nu ≈ 11.5%, Efectivo = 0%'}
+                </p>
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -4306,7 +4478,13 @@ const FinanzasPage = () => {
                             nombre: formBolsillo.nombre || tipoBolsillo?.nombre || 'Bolsillo',
                             tipo: formBolsillo.tipo,
                             icono: tipoBolsillo?.icono || '📦',
-                            tasaRendimientoAnual: parseFloat(formBolsillo.tasaRendimientoAnual) || 0
+                            tasaRendimientoAnual: parseFloat(formBolsillo.tasaRendimientoAnual) || 0,
+                            ...(formBolsillo.tipo === 'cdt' ? {
+                              fechaApertura: formBolsillo.fechaApertura || b.fechaApertura,
+                              fechaVencimiento: formBolsillo.fechaVencimiento || b.fechaVencimiento,
+                              entidadBancaria: formBolsillo.entidadBancaria || b.entidadBancaria,
+                              montoInicial: b.montoInicial,
+                            } : {})
                           };
                         });
                         return {
@@ -4316,20 +4494,28 @@ const FinanzasPage = () => {
                       }));
                     } else {
                       // Crear nuevo bolsillo
+                      const montoInicialCdt = formBolsillo.tipo === 'cdt' ? (parseInt(formBolsillo.montoInicial) || saldoInicial) : 0;
+                      const saldoFinal = formBolsillo.tipo === 'cdt' && montoInicialCdt > 0 ? montoInicialCdt : saldoInicial;
                       const nuevoBolsillo: Bolsillo = {
                         id: Date.now(),
                         nombre: formBolsillo.nombre || tipoBolsillo?.nombre || 'Bolsillo',
                         icono: tipoBolsillo?.icono || '📦',
                         tipo: formBolsillo.tipo,
-                        saldo: saldoInicial,
+                        saldo: saldoFinal,
                         tasaRendimientoAnual: parseFloat(formBolsillo.tasaRendimientoAnual) || 0,
-                        historialAportes: saldoInicial > 0 ? [{
+                        historialAportes: saldoFinal > 0 ? [{
                           id: Date.now(),
                           fecha: getColombiaDateOnly(),
-                          monto: saldoInicial,
+                          monto: saldoFinal,
                           tipo: 'aporte',
-                          nota: 'Saldo inicial'
-                        }] : []
+                          nota: formBolsillo.tipo === 'cdt' ? 'Apertura CDT' : 'Saldo inicial'
+                        }] : [],
+                        ...(formBolsillo.tipo === 'cdt' ? {
+                          fechaApertura: formBolsillo.fechaApertura || getColombiaDateOnly(),
+                          fechaVencimiento: formBolsillo.fechaVencimiento || '',
+                          montoInicial: montoInicialCdt || saldoFinal,
+                          entidadBancaria: formBolsillo.entidadBancaria || '',
+                        } : {})
                       };
                       
                       setMetasFinancieras(prev => prev.map(m => {

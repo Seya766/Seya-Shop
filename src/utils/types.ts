@@ -153,6 +153,11 @@ export interface Bolsillo {
   saldo: number;
   tasaRendimientoAnual: number; // % EA (Nu ~11.5%, efectivo 0%)
   historialAportes: AporteMeta[];
+  // Campos específicos para CDT
+  fechaApertura?: string; // fecha de apertura del CDT
+  fechaVencimiento?: string; // fecha de vencimiento del CDT
+  montoInicial?: number; // monto con el que se abrió el CDT
+  entidadBancaria?: string; // banco donde se tiene el CDT
 }
 
 export interface MetaFinanciera {
