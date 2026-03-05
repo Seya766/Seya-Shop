@@ -76,6 +76,7 @@ const FinanzasPage = () => {
   const [formMeta, setFormMeta] = useState({
     nombre: '', icono: '🚗', montoObjetivo: '', montoActual: '',
     fechaObjetivo: '', cajitaNubank: '', tasaRendimientoAnual: '11.5',
+    tipoBolsillo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro',
     aporteMensualPlaneado: '', prioridad: 'media' as 'alta' | 'media' | 'baja', color: 'emerald'
   });
   const [formAporte, setFormAporte] = useState({
@@ -87,7 +88,7 @@ const FinanzasPage = () => {
   // Estados para bolsillos
   const [modalBolsillo, setModalBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
   const [formBolsillo, setFormBolsillo] = useState({
-    nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'otro', saldo: '', tasaRendimientoAnual: '11.5'
+    nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro', saldo: '', tasaRendimientoAnual: '11.5'
   });
   const [modalAporteBolsillo, setModalAporteBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
 
@@ -100,6 +101,7 @@ const FinanzasPage = () => {
     { tipo: 'nu', nombre: 'Nu Bank', icono: '💜', tasaDefault: 11.5 },
     { tipo: 'efectivo', nombre: 'Efectivo', icono: '💵', tasaDefault: 0 },
     { tipo: 'banco', nombre: 'Otro Banco', icono: '🏦', tasaDefault: 0 },
+    { tipo: 'cdt', nombre: 'CDT', icono: '📜', tasaDefault: 10 },
     { tipo: 'otro', nombre: 'Otro', icono: '📦', tasaDefault: 0 },
   ] as const;
 
@@ -2384,6 +2386,7 @@ const FinanzasPage = () => {
                 setFormMeta({
                   nombre: '', icono: '🚗', montoObjetivo: '', montoActual: '',
                   fechaObjetivo: '', cajitaNubank: '', tasaRendimientoAnual: '11.5',
+                  tipoBolsillo: 'nu',
                   aporteMensualPlaneado: '', prioridad: 'media', color: 'emerald'
                 });
                 setModalMeta(true);
@@ -2887,6 +2890,7 @@ const FinanzasPage = () => {
                                 fechaObjetivo: meta.fechaObjetivo || '',
                                 cajitaNubank: '',
                                 tasaRendimientoAnual: '0',
+                                tipoBolsillo: 'nu',
                                 aporteMensualPlaneado: meta.aporteMensualPlaneado.toString(),
                                 prioridad: meta.prioridad,
                                 color: meta.color
@@ -3498,13 +3502,40 @@ const FinanzasPage = () => {
                 </div>
               </div>
 
-              {/* Cajita Nu Bank */}
+              {/* Tipo de bolsillo inicial */}
               <div>
-                <label className="text-xs text-gray-500 block mb-1.5 font-medium">Nombre de la Cajita (Nu Bank)</label>
+                <label className="text-xs text-gray-500 block mb-1.5 font-medium">Donde tienes el ahorro</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {TIPOS_BOLSILLO.map(tipo => (
+                    <button
+                      key={tipo.tipo}
+                      type="button"
+                      onClick={() => setFormMeta({
+                        ...formMeta,
+                        tipoBolsillo: tipo.tipo,
+                        tasaRendimientoAnual: tipo.tasaDefault.toString(),
+                        cajitaNubank: formMeta.cajitaNubank
+                      })}
+                      className={`p-2.5 rounded-xl border transition-all flex items-center gap-1.5 ${
+                        formMeta.tipoBolsillo === tipo.tipo
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                          : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:border-gray-600'
+                      }`}
+                    >
+                      <span className="text-lg">{tipo.icono}</span>
+                      <span className="text-xs font-medium">{tipo.nombre}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Nombre personalizado del bolsillo */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-1.5 font-medium">Nombre del bolsillo (opcional)</label>
                 <input
                   type="text"
-                  placeholder="Ej: Carro nuevo"
-                  className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                  placeholder={TIPOS_BOLSILLO.find(t => t.tipo === formMeta.tipoBolsillo)?.nombre || 'Ej: Carro nuevo'}
+                  className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
                   value={formMeta.cajitaNubank}
                   onChange={e => setFormMeta({...formMeta, cajitaNubank: e.target.value})}
                 />
@@ -3588,12 +3619,13 @@ const FinanzasPage = () => {
                     const saldoInicial = parseInt(formMeta.montoActual) || 0;
                     const tasaInicial = parseFloat(formMeta.tasaRendimientoAnual) || 11.5;
                     
-                    // Crear bolsillo inicial si hay saldo
+                    // Crear bolsillo inicial con el tipo seleccionado
+                    const tipoInfo = TIPOS_BOLSILLO.find(t => t.tipo === formMeta.tipoBolsillo) || TIPOS_BOLSILLO[0];
                     const bolsilloInicial: Bolsillo = {
                       id: Date.now(),
-                      nombre: formMeta.cajitaNubank || 'Nu Bank',
-                      icono: '💜',
-                      tipo: 'nu',
+                      nombre: formMeta.cajitaNubank || tipoInfo.nombre,
+                      icono: tipoInfo.icono,
+                      tipo: formMeta.tipoBolsillo,
                       saldo: saldoInicial,
                       tasaRendimientoAnual: tasaInicial,
                       historialAportes: saldoInicial > 0 ? [{
