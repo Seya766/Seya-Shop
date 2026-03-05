@@ -246,91 +246,104 @@ export const DataProvider = ({ children, userId }: DataProviderProps) => {
     if (isReceivingFromFirebase.current) return;
 
     setSyncStatus(navigator.onLine ? 'syncing' : 'pending');
-    try {
-      // All data stored under ADMIN path, with tenant-specific key prefix
-      const tenantKey = userId === ADMIN_USER_ID ? key : `${userId}_${key}`;
-      const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
-      await setDoc(docRef, { value, updatedAt: new Date().toISOString() });
-      if (navigator.onLine) {
-        setSyncStatus('synced');
+    const tenantKey = userId === ADMIN_USER_ID ? key : `${userId}_${key}`;
+    const docRef = doc(db, 'users', ADMIN_USER_ID, 'data', tenantKey);
+    const payload = { value, updatedAt: new Date().toISOString() };
+
+    // Retry up to 3 times with exponential backoff for transient Firebase errors
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await setDoc(docRef, payload);
+        if (navigator.onLine) {
+          setSyncStatus('synced');
+        }
+        return; // Success, exit
+      } catch (error) {
+        const isLastAttempt = attempt === 2;
+        const errorMsg = error instanceof Error ? error.message : '';
+        const isTransient = errorMsg.includes('stream token') || errorMsg.includes('UNAVAILABLE') || errorMsg.includes('network');
+
+        if (isLastAttempt || !isTransient) {
+          console.error(`Error guardando ${key}:`, error);
+          setSyncStatus('pending');
+          return;
+        }
+        // Wait before retrying: 500ms, 1500ms
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
       }
-    } catch (error) {
-      console.error(`Error guardando ${key}:`, error);
-      setSyncStatus('pending');
     }
   }, [userId]);
 
-  const setFacturas = useCallback((value: Factura[] | ((prev: Factura[]) => Factura[])) => {
-    setFacturasState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.FACTURAS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  // Helper: wraps a React state setter so that after computing the new value
+  // it saves to Firestore OUTSIDE the state updater (avoids side-effects in
+  // updater and race conditions with isReceivingFromFirebase).
+  const pendingSavesRef = useRef<Array<{ key: string; value: unknown }>>([]);
 
-  const setRevendedoresOcultos = useCallback((value: string[] | ((prev: string[]) => string[])) => {
-    setRevendedoresOcultosState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.REVENDEDORES_OCULTOS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const createSetter = <T,>(
+    rawSetter: React.Dispatch<React.SetStateAction<T>>,
+    storageKey: string
+  ) => {
+    return (value: T | ((prev: T) => T)) => {
+      rawSetter(prev => {
+        const newValue = typeof value === 'function' ? (value as (prev: T) => T)(prev) : value;
+        // Queue the save - will be flushed after state commit
+        pendingSavesRef.current.push({ key: storageKey, value: newValue });
+        return newValue;
+      });
+      // Schedule save after React has committed the state update
+      queueMicrotask(() => {
+        const saves = pendingSavesRef.current.splice(0);
+        for (const { key, value: val } of saves) {
+          saveToFirestore(key, val);
+        }
+      });
+    };
+  };
 
-  const setPagosRevendedores = useCallback((value: PagoRevendedor[] | ((prev: PagoRevendedor[]) => PagoRevendedor[])) => {
-    setPagosRevendedoresState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.PAGOS_REVENDEDORES, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setFacturas = useCallback(
+    createSetter(setFacturasState, STORAGE_KEYS.FACTURAS),
+    [saveToFirestore]
+  );
 
-  const setGastosFijos = useCallback((value: GastoFijo[] | ((prev: GastoFijo[]) => GastoFijo[])) => {
-    setGastosFijosState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.GASTOS_FIJOS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setRevendedoresOcultos = useCallback(
+    createSetter(setRevendedoresOcultosState, STORAGE_KEYS.REVENDEDORES_OCULTOS),
+    [saveToFirestore]
+  );
 
-  const setTransacciones = useCallback((value: Transaccion[] | ((prev: Transaccion[]) => Transaccion[])) => {
-    setTransaccionesState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.TRANSACCIONES, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setPagosRevendedores = useCallback(
+    createSetter(setPagosRevendedoresState, STORAGE_KEYS.PAGOS_REVENDEDORES),
+    [saveToFirestore]
+  );
 
-  const setMetaAhorro = useCallback((value: MetaAhorro | ((prev: MetaAhorro) => MetaAhorro)) => {
-    setMetaAhorroState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.META_AHORRO, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setGastosFijos = useCallback(
+    createSetter(setGastosFijosState, STORAGE_KEYS.GASTOS_FIJOS),
+    [saveToFirestore]
+  );
 
-  const setMetasFinancieras = useCallback((value: MetaFinanciera[] | ((prev: MetaFinanciera[]) => MetaFinanciera[])) => {
-    setMetasFinancierasState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.METAS_FINANCIERAS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setTransacciones = useCallback(
+    createSetter(setTransaccionesState, STORAGE_KEYS.TRANSACCIONES),
+    [saveToFirestore]
+  );
 
-  const setPresupuestoMensual = useCallback((value: number | ((prev: number) => number)) => {
-    setPresupuestoMensualState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.PRESUPUESTO, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setMetaAhorro = useCallback(
+    createSetter(setMetaAhorroState, STORAGE_KEYS.META_AHORRO),
+    [saveToFirestore]
+  );
 
-  const setFacturasOcultas = useCallback((value: number[] | ((prev: number[]) => number[])) => {
-    setFacturasOcultasState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      saveToFirestore(STORAGE_KEYS.FACTURAS_OCULTAS, newValue);
-      return newValue;
-    });
-  }, [saveToFirestore]);
+  const setMetasFinancieras = useCallback(
+    createSetter(setMetasFinancierasState, STORAGE_KEYS.METAS_FINANCIERAS),
+    [saveToFirestore]
+  );
+
+  const setPresupuestoMensual = useCallback(
+    createSetter(setPresupuestoMensualState, STORAGE_KEYS.PRESUPUESTO),
+    [saveToFirestore]
+  );
+
+  const setFacturasOcultas = useCallback(
+    createSetter(setFacturasOcultasState, STORAGE_KEYS.FACTURAS_OCULTAS),
+    [saveToFirestore]
+  );
 
   const descargarBackup = () => {
     try {
