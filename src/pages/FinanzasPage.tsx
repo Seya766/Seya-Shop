@@ -88,6 +88,7 @@ const FinanzasPage = () => {
   
   // Estados para bolsillos
   const [modalBolsillo, setModalBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
   const [formBolsillo, setFormBolsillo] = useState({
     nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro', saldo: '', tasaRendimientoAnual: '11.5',
     fechaApertura: '', fechaVencimiento: '', montoInicial: '', entidadBancaria: ''
@@ -2745,6 +2746,7 @@ const FinanzasPage = () => {
                                         montoInicial: bolsillo.montoInicial?.toString() || '',
                                         entidadBancaria: bolsillo.entidadBancaria || ''
                                       });
+                                      setConfirmandoEliminar(false);
                                       setModalBolsillo({ visible: true, meta: metaOriginal, bolsillo });
                                     }}
                                     className="text-xs py-1.5 px-2 bg-gray-700/50 hover:bg-gray-600/50 rounded-md transition-all"
@@ -4465,29 +4467,43 @@ const FinanzasPage = () => {
               </div>
 
               <div className="flex gap-3 pt-2">
-                {esEdicion && (
+                {esEdicion && !confirmandoEliminar && (
                   <button
-                    onClick={() => {
-                      if (!confirm(`¿Eliminar el bolsillo "${bolsilloEditar?.nombre}"?`)) return;
-                      
-                      setMetasFinancieras(prev => prev.map(m => {
-                        if (m.id !== meta.id) return m;
-                        const metaMigrada = migrarMetaABolsillos(m);
-                        const bolsillosFiltrados = metaMigrada.bolsillos.filter(b => b.id !== bolsilloEditar?.id);
-                        const nuevoSaldo = bolsillosFiltrados.reduce((sum, b) => sum + b.saldo, 0);
-                        return {
-                          ...metaMigrada,
-                          bolsillos: bolsillosFiltrados,
-                          montoActual: nuevoSaldo
-                        };
-                      }));
-                      
-                      setModalBolsillo({ visible: false, meta: null, bolsillo: null });
-                    }}
+                    onClick={() => setConfirmandoEliminar(true)}
                     className="p-3.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-xl transition-all"
                   >
                     <Trash2 size={18} />
                   </button>
+                )}
+                {esEdicion && confirmandoEliminar && (
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => setConfirmandoEliminar(false)}
+                      className="p-3.5 bg-gray-700/50 hover:bg-gray-600/50 text-gray-400 rounded-xl transition-all text-xs"
+                    >
+                      No
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMetasFinancieras(prev => prev.map(m => {
+                          if (m.id !== meta.id) return m;
+                          const metaMigrada = migrarMetaABolsillos(m);
+                          const bolsillosFiltrados = metaMigrada.bolsillos.filter(b => b.id !== bolsilloEditar?.id);
+                          const nuevoSaldo = bolsillosFiltrados.reduce((sum, b) => sum + b.saldo, 0);
+                          return {
+                            ...metaMigrada,
+                            bolsillos: bolsillosFiltrados,
+                            montoActual: nuevoSaldo
+                          };
+                        }));
+                        setConfirmandoEliminar(false);
+                        setModalBolsillo({ visible: false, meta: null, bolsillo: null });
+                      }}
+                      className="p-3.5 bg-red-600 hover:bg-red-500 text-white rounded-xl transition-all text-xs font-bold"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 )}
                 <button
                   onClick={() => setModalBolsillo({ visible: false, meta: null, bolsillo: null })}
