@@ -222,8 +222,8 @@ const FinanzasPage = () => {
   // HELPER: Migrar metas legacy a sistema de bolsillos
   // =============================================
   const migrarMetaABolsillos = (meta: MetaFinanciera): MetaFinanciera => {
-    // Si ya tiene bolsillos, solo asegurarse que no haya undefined
-    if (meta.bolsillos && meta.bolsillos.length > 0) {
+    // Si ya tiene bolsillos (incluyendo array vacío = todos fueron borrados), preservar
+    if (meta.bolsillos) {
       return {
         ...meta,
         fechaObjetivo: meta.fechaObjetivo || '',
