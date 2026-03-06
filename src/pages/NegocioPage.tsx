@@ -17,6 +17,8 @@ import {
   calcularDiasRestantesGarantia
 } from '../utils/helpers';
 import type { Factura, HistorialAbono, PagoRevendedor, DistribucionPago } from '../utils/types';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 // Tipo para el desglose de ganancias
 interface DetalleGanancia {
@@ -2057,15 +2059,57 @@ Te escribo de *${shopName}* para recordarte que tienes un saldo pendiente de *${
     setModalHistorialPagos({ visible: true, nombre });
   }, []);
 
-  const copiarLinkPortal = useCallback((nombre: string) => {
+  const copiarLinkPortal = useCallback(async (nombre: string) => {
     if (!userId) return;
-    const baseUrl = window.location.origin;
-    const url = `${baseUrl}/v/${encodeURIComponent(userId)}/${encodeURIComponent(nombre.toLowerCase())}`;
-    navigator.clipboard.writeText(url).then(() => {
-      alert(`Link copiado:\n${url}`);
-    }).catch(() => {
-      prompt('Copia este link:', url);
-    });
+
+    const ADMIN_ID = 'T8lrzfd7vFfab9SXAgMjl1AIHv33';
+    const shortLinksRef = doc(db, 'users', ADMIN_ID, 'data', 'seyaShop_shortLinks');
+
+    try {
+      // Check if a short code already exists for this reseller
+      const snap = await getDoc(shortLinksRef);
+      const existing: Record<string, { userId: string; revendedor: string }> = snap.exists() ? (snap.data().value || {}) : {};
+
+      // Find existing code for this userId + revendedor combo
+      const nameLower = nombre.toLowerCase();
+      let existingCode: string | null = null;
+      for (const [c, entry] of Object.entries(existing)) {
+        if (entry.userId === userId && entry.revendedor === nameLower) {
+          existingCode = c;
+          break;
+        }
+      }
+
+      let shortCode = existingCode;
+      if (!shortCode) {
+        // Generate a new 6-char alphanumeric code
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+        do {
+          shortCode = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+        } while (existing[shortCode]);
+
+        existing[shortCode] = { userId, revendedor: nameLower };
+        await setDoc(shortLinksRef, { value: existing, updatedAt: new Date().toISOString() });
+      }
+
+      const baseUrl = window.location.origin;
+      const url = `${baseUrl}/r/${shortCode}`;
+      navigator.clipboard.writeText(url).then(() => {
+        alert(`Link copiado:\n${url}`);
+      }).catch(() => {
+        prompt('Copia este link:', url);
+      });
+    } catch (err) {
+      console.error('Error generating short link:', err);
+      // Fallback to long URL
+      const baseUrl = window.location.origin;
+      const url = `${baseUrl}/v/${encodeURIComponent(userId)}/${encodeURIComponent(nombre.toLowerCase())}`;
+      navigator.clipboard.writeText(url).then(() => {
+        alert(`Link copiado:\n${url}`);
+      }).catch(() => {
+        prompt('Copia este link:', url);
+      });
+    }
   }, [userId]);
 
   const eliminarPagoRevendedor = useCallback((pagoId: number) => {

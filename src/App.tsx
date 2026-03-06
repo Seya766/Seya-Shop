@@ -109,7 +109,8 @@ const App = () => {
     <Router>
       <TenantProvider>
         <Routes>
-          {/* Public route for resellers - no auth needed */}
+          {/* Public routes for resellers - no auth needed */}
+          <Route path="/r/:code" element={<ResellerPortal />} />
           <Route path="/v/:userId/:revendedor" element={<ResellerPortal />} />
 
           {/* All other routes require authentication */}
