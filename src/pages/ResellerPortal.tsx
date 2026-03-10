@@ -4,7 +4,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { db, auth } from '../firebase/config';
 import { STORAGE_KEYS } from '../utils/constants';
-import { Download, RefreshCw, FileText, Clock, AlertCircle } from 'lucide-react';
+import { Download, FileText, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Phone, Building2, User, CalendarDays, Receipt, Shield } from 'lucide-react';
 import type { Factura, PagoRevendedor } from '../utils/types';
 
 // Admin user ID - all data is stored under this path
@@ -17,7 +17,7 @@ const fmtDate = (iso: string | null | undefined) => {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', timeZone: 'America/Bogota' });
+    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'America/Bogota' });
   } catch {
     return iso.slice(0, 10);
   }
@@ -31,21 +31,70 @@ const getTenantKey = (baseKey: string, tenantId: string) => {
   return `${tenantId}_${baseKey}`;
 };
 
+interface ShortLinkData {
+  [code: string]: { userId: string; revendedor: string };
+}
+
 const ResellerPortal = () => {
-  const { userId, revendedor } = useParams<{ userId: string; revendedor: string }>();
-  const name = decodeURIComponent(revendedor || '');
-  const tenantId = decodeURIComponent(userId || '');
+  const { userId, revendedor, code } = useParams<{ userId?: string; revendedor?: string; code?: string }>();
+
+  // Resolved values (either from direct params or short link)
+  const [resolvedName, setResolvedName] = useState<string>(revendedor ? decodeURIComponent(revendedor) : '');
+  const [resolvedTenantId, setResolvedTenantId] = useState<string>(userId ? decodeURIComponent(userId) : '');
+  const [resolving, setResolving] = useState(!!code);
 
   const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [facturasOcultas, setFacturasOcultas] = useState<number[]>([]);
   const [pagos, setPagos] = useState<PagoRevendedor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [showPagadas, setShowPagadas] = useState(false);
 
+  // Resolve short link code
   useEffect(() => {
-    if (!name || !tenantId) return;
+    if (!code) return;
+
+    const resolveShortLink = async () => {
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+
+        const shortLinksRef = doc(db, 'users', ADMIN_USER_ID, 'data', 'seyaShop_shortLinks');
+        const unsub = onSnapshot(shortLinksRef, (snap) => {
+          if (snap.exists()) {
+            const data = snap.data().value as ShortLinkData;
+            const entry = data[code];
+            if (entry) {
+              setResolvedName(entry.revendedor);
+              setResolvedTenantId(entry.userId);
+              setResolving(false);
+              return;
+            }
+          }
+          setError('Enlace no válido o expirado');
+          setResolving(false);
+          setLoading(false);
+        });
+
+        return unsub;
+      } catch {
+        setError('Error de conexión');
+        setResolving(false);
+        setLoading(false);
+      }
+    };
+
+    resolveShortLink();
+  }, [code]);
+
+  // Fetch data once we have resolved name and tenantId
+  useEffect(() => {
+    if (!resolvedName || !resolvedTenantId || resolving) return;
 
     let unsubFacturas: (() => void) | null = null;
+    let unsubOcultas: (() => void) | null = null;
     let unsubPagos: (() => void) | null = null;
 
     const init = async () => {
@@ -54,10 +103,10 @@ const ResellerPortal = () => {
           await signInAnonymously(auth);
         }
 
-        // Real-time listener for facturas (case-insensitive match)
-        // Data is stored under ADMIN_USER_ID path with tenant prefix
-        const nameLower = name.toLowerCase();
-        const facturasKey = getTenantKey(STORAGE_KEYS.FACTURAS, tenantId);
+        const nameLower = resolvedName.toLowerCase();
+
+        // Listen for facturas
+        const facturasKey = getTenantKey(STORAGE_KEYS.FACTURAS, resolvedTenantId);
         const facturasRef = doc(db, 'users', ADMIN_USER_ID, 'data', facturasKey);
         unsubFacturas = onSnapshot(facturasRef, (snap) => {
           if (snap.exists()) {
@@ -72,8 +121,17 @@ const ResellerPortal = () => {
           setLoading(false);
         });
 
-        // Real-time listener for pagos (case-insensitive match)
-        const pagosKey = getTenantKey(STORAGE_KEYS.PAGOS_REVENDEDORES, tenantId);
+        // Listen for hidden invoices
+        const ocultasKey = getTenantKey(STORAGE_KEYS.FACTURAS_OCULTAS, resolvedTenantId);
+        const ocultasRef = doc(db, 'users', ADMIN_USER_ID, 'data', ocultasKey);
+        unsubOcultas = onSnapshot(ocultasRef, (snap) => {
+          if (snap.exists()) {
+            setFacturasOcultas(snap.data().value || []);
+          }
+        });
+
+        // Listen for pagos
+        const pagosKey = getTenantKey(STORAGE_KEYS.PAGOS_REVENDEDORES, resolvedTenantId);
         const pagosRef = doc(db, 'users', ADMIN_USER_ID, 'data', pagosKey);
         unsubPagos = onSnapshot(pagosRef, (snap) => {
           if (snap.exists()) {
@@ -91,16 +149,20 @@ const ResellerPortal = () => {
     init();
     return () => {
       unsubFacturas?.();
+      unsubOcultas?.();
       unsubPagos?.();
     };
-  }, [name, tenantId]);
+  }, [resolvedName, resolvedTenantId, resolving]);
 
-  const pendientes = facturas
+  // Filter out hidden invoices completely
+  const facturasVisibles = facturas.filter(f => !facturasOcultas.includes(f.id));
+
+  const pendientes = facturasVisibles
     .filter(f => f.pagadoAProveedor && !f.cobradoACliente)
     .map(f => ({ ...f, saldo: (f.cobroCliente || 0) - (f.abono || 0) }))
     .sort((a, b) => new Date(b.fechaISO || '').getTime() - new Date(a.fechaISO || '').getTime());
 
-  const cobradas = facturas
+  const cobradas = facturasVisibles
     .filter(f => f.cobradoACliente)
     .sort((a, b) => new Date(b.fechaISO || '').getTime() - new Date(a.fechaISO || '').getTime());
 
@@ -113,30 +175,33 @@ const ResellerPortal = () => {
   );
 
   const downloadHTML = () => {
-    const html = generateHTML(name, pendientes, cobradas, pagosOrdenados, totalPendiente, totalCobro, totalAbonado);
+    const html = generateHTML(resolvedName, pendientes, cobradas, pagosOrdenados, totalPendiente, totalCobro, totalAbonado);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Estado_${name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.html`;
+    a.download = `Estado_${resolvedName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.html`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  if (!name) {
+  if (!resolvedName && !resolving) {
     return (
-      <div className="min-h-screen bg-[#0f111a] flex items-center justify-center text-gray-400">
-        <p>Revendedor no especificado</p>
+      <div className="min-h-screen bg-[#0f111a] flex items-center justify-center text-gray-400 p-4">
+        <div className="text-center">
+          <AlertCircle size={40} className="mx-auto mb-3 text-gray-600" />
+          <p>Revendedor no especificado</p>
+        </div>
       </div>
     );
   }
 
-  if (loading) {
+  if (loading || resolving) {
     return (
       <div className="min-h-screen bg-[#0f111a] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">Cargando datos...</p>
+          <div className="w-10 h-10 border-3 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400 text-sm">Cargando tu estado de cuenta...</p>
         </div>
       </div>
     );
@@ -145,145 +210,212 @@ const ResellerPortal = () => {
   if (error) {
     return (
       <div className="min-h-screen bg-[#0f111a] flex items-center justify-center p-4">
-        <div className="text-center">
-          <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
-          <p className="text-red-400">{error}</p>
+        <div className="text-center max-w-sm">
+          <AlertCircle size={40} className="text-red-400 mx-auto mb-3" />
+          <p className="text-red-400 font-medium mb-2">{error}</p>
+          <p className="text-gray-500 text-sm">Verifica que el enlace sea correcto o contacta al administrador.</p>
         </div>
       </div>
     );
   }
 
-  if (facturas.length === 0) {
+  if (facturasVisibles.length === 0) {
     return (
       <div className="min-h-screen bg-[#0f111a] flex items-center justify-center p-4">
-        <div className="text-center">
-          <FileText size={32} className="text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400">No se encontraron facturas para <strong className="text-white">{name}</strong></p>
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600/20 to-indigo-700/20 flex items-center justify-center mx-auto mb-4">
+            <FileText size={28} className="text-purple-400" />
+          </div>
+          <p className="text-white font-medium mb-1">Sin facturas</p>
+          <p className="text-gray-500 text-sm">No hay facturas registradas para <strong className="text-gray-300">{resolvedName}</strong></p>
         </div>
       </div>
     );
   }
+
+  const pctPago = totalCobro > 0 ? Math.round((totalAbonado / totalCobro) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-[#0f111a] text-gray-100">
+      {/* Animations CSS */}
+      <style>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInScale {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(30px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes growWidth {
+          from { width: 0%; }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out both; }
+        .animate-fade-in-scale { animation: fadeInScale 0.5s ease-out both; }
+        .animate-slide-in-right { animation: slideInRight 0.4s ease-out both; }
+        .animate-grow-width { animation: growWidth 1s ease-out 0.5s both; }
+        .stagger-1 { animation-delay: 0.1s; }
+        .stagger-2 { animation-delay: 0.2s; }
+        .stagger-3 { animation-delay: 0.3s; }
+        .stagger-4 { animation-delay: 0.4s; }
+        .stagger-5 { animation-delay: 0.5s; }
+        .stagger-6 { animation-delay: 0.6s; }
+        .stagger-7 { animation-delay: 0.7s; }
+        .stagger-8 { animation-delay: 0.8s; }
+      `}</style>
+
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-[#0f111a]/90 backdrop-blur-md border-b border-white/5">
-        <div className="max-w-2xl mx-auto px-4 py-4">
+      <header className="sticky top-0 z-10 bg-[#0f111a]/95 backdrop-blur-lg border-b border-white/5">
+        <div className="w-full px-4 sm:px-8 py-3">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white font-bold text-sm">S</div>
-                <span className="text-lg font-semibold text-white">Seya</span>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-purple-500/20">S</div>
+              <div>
+                <h1 className="text-base font-bold text-white leading-tight">Seya</h1>
+                <p className="text-[11px] text-gray-500">Estado de cuenta</p>
               </div>
-              <p className="text-sm text-gray-500 mt-1">Estado de cuenta &middot; {name}</p>
             </div>
             <button
               onClick={downloadHTML}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-gray-300 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-gray-400 transition-colors border border-white/5"
             >
-              <Download size={16} />
-              <span className="hidden sm:inline">Descargar</span>
+              <Download size={13} />
+              Descargar
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4">
-            <p className="text-xs text-gray-500 mb-1">Por cobrar</p>
-            <p className="text-lg font-semibold text-red-400">{fmt(totalPendiente)}</p>
+      <main className="w-full px-4 sm:px-8 py-5 space-y-5">
+        {/* Top section: Welcome card with summary */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-scale">
+          {/* User info */}
+          <div className="bg-gradient-to-br from-purple-600/10 to-indigo-700/10 border border-purple-500/10 rounded-2xl p-5 sm:p-6 flex flex-col justify-center">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-purple-500/30">
+                {resolvedName.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="text-white font-semibold text-xl capitalize">{resolvedName}</p>
+                <p className="text-gray-500 text-xs">
+                  Actualizado {lastUpdate?.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Bogota' }) || '—'}
+                </p>
+              </div>
+            </div>
+            {/* Progress bar */}
+            {totalCobro > 0 && (
+              <div className="mt-auto">
+                <div className="flex justify-between text-[10px] text-gray-500 mb-1.5">
+                  <span>Progreso de pago</span>
+                  <span className="font-medium text-gray-400">{pctPago}%</span>
+                </div>
+                <div className="w-full h-2.5 bg-black/30 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full animate-grow-width"
+                    style={{ width: `${Math.min(100, pctPago)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4">
-            <p className="text-xs text-gray-500 mb-1">Abonado</p>
-            <p className="text-lg font-semibold text-emerald-400">{fmt(totalAbonado)}</p>
+
+          {/* Summary stats */}
+          <div className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 sm:p-6 flex flex-col items-center justify-center text-center animate-fade-in-up stagger-1">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Deuda total</p>
+            <p className="text-3xl font-bold text-red-400">{fmt(totalPendiente)}</p>
+            <p className="text-xs text-gray-600 mt-2">{pendientes.length} {pendientes.length === 1 ? 'factura pendiente' : 'facturas pendientes'}</p>
           </div>
-          <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4">
-            <p className="text-xs text-gray-500 mb-1">Facturas</p>
-            <p className="text-lg font-semibold text-white">{pendientes.length}</p>
-            <p className="text-[10px] text-gray-600">pendientes</p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center justify-center text-center animate-fade-in-up stagger-2">
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Abonado</p>
+              <p className="text-2xl font-bold text-emerald-400">{fmt(totalAbonado)}</p>
+            </div>
+            <div className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center justify-center text-center animate-fade-in-up stagger-3">
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Facturas</p>
+              <p className="text-2xl font-bold text-white">{pendientes.length}</p>
+            </div>
           </div>
         </div>
 
-        {/* Total bar */}
-        {totalCobro > 0 && (
-          <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4">
-            <div className="flex justify-between text-xs text-gray-500 mb-2">
-              <span>Progreso de pago</span>
-              <span>{Math.round((totalAbonado / totalCobro) * 100)}%</span>
-            </div>
-            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, (totalAbonado / totalCobro) * 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Pending invoices */}
-        <section>
-          <h2 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-            <FileText size={14} />
-            Facturas pendientes
-          </h2>
-          <div className="space-y-2">
-            {pendientes.map(f => (
-              <div key={f.id} className="bg-white/[0.03] border border-white/5 rounded-xl p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <span className="text-sm font-medium text-white">{f.cliente}</span>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-gray-500">{f.empresa}</span>
-                      <span className="text-xs text-gray-600">&middot;</span>
-                      <span className="text-xs text-gray-500">{f.fechaDisplay || fmtDate(f.fechaISO)}</span>
+        {pendientes.length > 0 && (
+          <section className="animate-fade-in-up stagger-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                <Receipt size={15} className="text-red-400" />
+                Facturas pendientes
+              </h2>
+              <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">
+                {pendientes.length} {pendientes.length === 1 ? 'factura' : 'facturas'}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {pendientes.map((f, idx) => (
+                <div key={f.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 hover:border-purple-500/20 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-300 animate-slide-in-right" style={{ animationDelay: `${0.4 + idx * 0.08}s` }}>
+                  {/* Client & date header */}
+                  <div className="mb-3">
+                    <div className="flex items-center gap-2">
+                      <User size={14} className="text-purple-400 flex-shrink-0" />
+                      <span className="text-sm font-semibold text-white truncate">{f.cliente}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 ml-[22px]">
+                      <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                        <Building2 size={10} />
+                        {f.empresa}
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                        <CalendarDays size={10} />
+                        {f.fechaDisplay || fmtDate(f.fechaISO)}
+                      </span>
                     </div>
                   </div>
-                  <span className="text-sm font-semibold text-red-400">{fmt(f.saldo)}</span>
-                </div>
-                {f.abono > 0 && (
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-gray-500">Cobro: {fmt(f.cobroCliente)}</span>
-                    <span className="text-emerald-500">Abonado: {fmt(f.abono)}</span>
-                  </div>
-                )}
-                {f.usoGarantia && (
-                  <div className="mt-1.5">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${f.garantiaResuelta ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
-                      {f.garantiaResuelta ? 'Garantia resuelta' : 'En garantia'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
 
-        {/* Payment history */}
-        {pagosOrdenados.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-              <Clock size={14} />
-              Historial de pagos
-            </h2>
-            <div className="space-y-2">
-              {pagosOrdenados.map(p => (
-                <div key={p.id} className="bg-white/[0.03] border border-white/5 rounded-xl p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-gray-500">{fmtDate(p.fecha)}</span>
-                    <span className="text-sm font-semibold text-emerald-400">{fmt(p.montoTotal)}</span>
+                  {/* Amounts */}
+                  <div className="bg-black/20 rounded-xl p-4 space-y-2.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Valor factura</span>
+                      <span className="text-sm font-medium text-gray-300">{fmt(f.montoFactura || 0)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Valor a cobrar</span>
+                      <span className="text-sm font-medium text-white">{fmt(f.cobroCliente || 0)}</span>
+                    </div>
+                    {f.abono > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Abonado</span>
+                        <span className="text-sm font-medium text-emerald-400">-{fmt(f.abono)}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-white/5 pt-2.5 flex justify-between items-center">
+                      <span className="text-xs font-semibold text-gray-400">Saldo pendiente</span>
+                      <span className="text-base font-bold text-red-400">{fmt(f.saldo)}</span>
+                    </div>
                   </div>
-                  {p.distribucion && p.distribucion.length > 0 && (
-                    <div className="space-y-1 mt-2 pt-2 border-t border-white/5">
-                      {p.distribucion.map((d, i) => (
-                        <div key={i} className="flex justify-between text-xs">
-                          <span className="text-gray-500">{d.cliente} ({d.empresa})</span>
-                          <span className={d.completada ? 'text-emerald-500' : 'text-gray-400'}>
-                            {fmt(d.montoAplicado)}
-                          </span>
-                        </div>
-                      ))}
+
+                  {/* Garantia badge */}
+                  {f.usoGarantia && (
+                    <div className="mt-2.5 flex items-center gap-1.5">
+                      <Shield size={12} className={f.garantiaResuelta ? 'text-emerald-400' : 'text-amber-400'} />
+                      <span className={`text-[11px] font-medium ${f.garantiaResuelta ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {f.garantiaResuelta ? 'Garantía resuelta' : 'En garantía'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Abono progress for partial payments */}
+                  {f.abono > 0 && f.cobroCliente > 0 && (
+                    <div className="mt-2.5">
+                      <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500/60 rounded-full"
+                          style={{ width: `${Math.min(100, (f.abono / f.cobroCliente) * 100)}%` }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -292,38 +424,94 @@ const ResellerPortal = () => {
           </section>
         )}
 
-        {/* Recently paid */}
-        {cobradas.length > 0 && (
-          <section>
-            <details className="group">
-              <summary className="text-sm font-medium text-gray-500 mb-3 flex items-center gap-2 cursor-pointer list-none">
-                <span className="group-open:rotate-90 transition-transform">&#9654;</span>
-                Facturas pagadas ({cobradas.length})
-              </summary>
-              <div className="space-y-1 mt-2">
-                {cobradas.slice(0, 20).map(f => (
-                  <div key={f.id} className="flex justify-between items-center py-2 px-3 rounded-lg bg-white/[0.02] text-sm">
-                    <div>
-                      <span className="text-gray-400">{f.cliente}</span>
-                      <span className="text-gray-600 text-xs ml-2">{f.empresa} &middot; {f.fechaDisplay || fmtDate(f.fechaISO)}</span>
+        {/* Bottom section: Payment history + Paid invoices side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Payment history */}
+          {pagosOrdenados.length > 0 && (
+            <section className="animate-fade-in-up stagger-6">
+              <h2 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                <Clock size={15} className="text-emerald-400" />
+                Historial de pagos
+              </h2>
+              <div className="space-y-3">
+                {pagosOrdenados.map(p => (
+                  <div key={p.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-emerald-500/20 transition-all duration-300">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                        <CalendarDays size={11} />
+                        {fmtDate(p.fecha)}
+                      </span>
+                      <span className="text-sm font-bold text-emerald-400">{fmt(p.montoTotal)}</span>
                     </div>
-                    <span className="text-emerald-500/60">{fmt(f.cobroCliente || 0)}</span>
+                    {p.distribucion && p.distribucion.length > 0 && (
+                      <div className="space-y-1.5 mt-2 pt-2 border-t border-white/5">
+                        {p.distribucion.map((d, i) => (
+                          <div key={i} className="flex justify-between text-xs">
+                            <span className="text-gray-500">
+                              {d.cliente} <span className="text-gray-600">({d.empresa})</span>
+                            </span>
+                            <span className={d.completada ? 'text-emerald-500 font-medium' : 'text-gray-400'}>
+                              {fmt(d.montoAplicado)}
+                              {d.completada && <CheckCircle2 size={10} className="inline ml-1 -mt-0.5" />}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </details>
-          </section>
+            </section>
+          )}
+
+          {/* Paid invoices */}
+          {cobradas.length > 0 && (
+            <section className="animate-fade-in-up stagger-7">
+              <button
+                onClick={() => setShowPagadas(!showPagadas)}
+                className="w-full flex items-center justify-between py-3 px-4 rounded-2xl bg-[#151825] border border-white/[0.06] text-sm text-gray-400 hover:bg-[#1a1e30] transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-emerald-500/50" />
+                  <span>Facturas pagadas</span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400/70 px-1.5 py-0.5 rounded-full">{cobradas.length}</span>
+                </span>
+                {showPagadas ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {showPagadas && (
+                <div className="mt-2 space-y-1.5">
+                  {cobradas.slice(0, 20).map(f => (
+                    <div key={f.id} className="flex justify-between items-center py-2.5 px-4 rounded-xl bg-[#151825]/60 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-gray-400">{f.cliente}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-gray-600 text-[11px]">{f.empresa}</span>
+                          <span className="text-gray-700 text-[11px]">&middot;</span>
+                          <span className="text-gray-600 text-[11px]">{f.fechaDisplay || fmtDate(f.fechaISO)}</span>
+                        </div>
+                      </div>
+                      <span className="text-emerald-500/50 font-medium text-xs">{fmt(f.cobroCliente || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+
+        {/* Contact prompt */}
+        {totalPendiente > 0 && (
+          <div className="bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/10 rounded-2xl p-4 text-center animate-fade-in-up stagger-8">
+            <Phone size={18} className="text-amber-400/60 mx-auto mb-2" />
+            <p className="text-xs text-gray-400">
+              Si tienes dudas sobre alguna factura, contacta al administrador.
+            </p>
+          </div>
         )}
 
         {/* Footer */}
-        <footer className="text-center pt-4 pb-8">
-          {lastUpdate && (
-            <p className="text-xs text-gray-600 flex items-center justify-center gap-1">
-              <RefreshCw size={10} />
-              Actualizado {lastUpdate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Bogota' })}
-            </p>
-          )}
-          <p className="text-[10px] text-gray-700 mt-1">Seya Shop &middot; Datos en tiempo real</p>
+        <footer className="text-center pt-2 pb-8">
+          <p className="text-[10px] text-gray-700">Seya Shop &middot; Datos en tiempo real</p>
         </footer>
       </main>
     </div>
@@ -354,6 +542,7 @@ function generateHTML(
       <td style="padding:8px 12px;border-bottom:1px solid #1e1e2e;color:#a0a0b0;font-size:13px">${inv.fechaDisplay || inv.fechaISO?.slice(0, 10) || '—'}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #1e1e2e;color:#e0e0e0;font-size:13px">${inv.cliente}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #1e1e2e;color:#a0a0b0;font-size:13px">${inv.empresa}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #1e1e2e;color:#a0a0b0;font-size:13px;text-align:right">${f(inv.montoFactura || 0)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #1e1e2e;color:#e0e0e0;font-size:13px;text-align:right">${f(inv.cobroCliente || 0)}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #1e1e2e;color:#4ade80;font-size:13px;text-align:right">${inv.abono > 0 ? f(inv.abono) : '—'}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #1e1e2e;color:#f87171;font-size:13px;font-weight:600;text-align:right">${f(inv.saldo)}</td>
@@ -428,10 +617,10 @@ th:nth-child(n+4){text-align:right}
   <section>
     <h2>&#128196; Facturas pendientes</h2>
     <table>
-      <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Cobro</th><th style="text-align:right">Abonado</th><th style="text-align:right">Saldo</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Cliente</th><th>Servicio</th><th style="text-align:right">Valor</th><th style="text-align:right">Cobro</th><th style="text-align:right">Abonado</th><th style="text-align:right">Saldo</th></tr></thead>
       <tbody>${rowsPendientes}</tbody>
       <tfoot><tr>
-        <td colspan="3" style="padding:10px 12px;font-weight:600;color:#fff;font-size:13px;border-top:2px solid #2a2a3e">TOTAL</td>
+        <td colspan="4" style="padding:10px 12px;font-weight:600;color:#fff;font-size:13px;border-top:2px solid #2a2a3e">TOTAL</td>
         <td style="padding:10px 12px;text-align:right;color:#fff;font-size:13px;font-weight:600;border-top:2px solid #2a2a3e">${f(totalCobro)}</td>
         <td style="padding:10px 12px;text-align:right;color:#4ade80;font-size:13px;font-weight:600;border-top:2px solid #2a2a3e">${f(totalAbonado)}</td>
         <td style="padding:10px 12px;text-align:right;color:#f87171;font-size:13px;font-weight:600;border-top:2px solid #2a2a3e">${f(totalPendiente)}</td>
