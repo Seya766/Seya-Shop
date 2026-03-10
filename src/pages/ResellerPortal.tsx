@@ -270,7 +270,7 @@ const ResellerPortal = () => {
 
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#0f111a]/95 backdrop-blur-lg border-b border-white/5">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
+        <div className="w-full px-4 sm:px-8 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-purple-500/20">S</div>
@@ -290,58 +290,62 @@ const ResellerPortal = () => {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-5 space-y-5">
-        {/* Welcome card */}
-        <div className="bg-gradient-to-br from-purple-600/10 to-indigo-700/10 border border-purple-500/10 rounded-2xl p-5 sm:p-6 animate-fade-in-scale">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-purple-500/30">
-              {resolvedName.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <p className="text-white font-semibold text-xl capitalize">{resolvedName}</p>
-              <p className="text-gray-500 text-xs">
-                Actualizado {lastUpdate?.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Bogota' }) || '—'}
-              </p>
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-black/20 rounded-xl p-4 text-center animate-fade-in-up stagger-1">
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Deuda</p>
-              <p className="text-lg font-bold text-red-400">{fmt(totalPendiente)}</p>
-            </div>
-            <div className="bg-black/20 rounded-xl p-4 text-center animate-fade-in-up stagger-2">
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Abonado</p>
-              <p className="text-lg font-bold text-emerald-400">{fmt(totalAbonado)}</p>
-            </div>
-            <div className="bg-black/20 rounded-xl p-4 text-center animate-fade-in-up stagger-3">
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Facturas</p>
-              <p className="text-lg font-bold text-white">{pendientes.length}</p>
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          {totalCobro > 0 && (
-            <div className="mt-4">
-              <div className="flex justify-between text-[10px] text-gray-500 mb-1.5">
-                <span>Progreso de pago</span>
-                <span className="font-medium text-gray-400">{pctPago}%</span>
+      <main className="w-full px-4 sm:px-8 py-5 space-y-5">
+        {/* Top section: Welcome card with summary */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in-scale">
+          {/* User info */}
+          <div className="bg-gradient-to-br from-purple-600/10 to-indigo-700/10 border border-purple-500/10 rounded-2xl p-5 sm:p-6 flex flex-col justify-center">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-purple-500/30">
+                {resolvedName.charAt(0).toUpperCase()}
               </div>
-              <div className="w-full h-2.5 bg-black/30 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full animate-grow-width"
-                  style={{ width: `${Math.min(100, pctPago)}%` }}
-                />
+              <div>
+                <p className="text-white font-semibold text-xl capitalize">{resolvedName}</p>
+                <p className="text-gray-500 text-xs">
+                  Actualizado {lastUpdate?.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Bogota' }) || '—'}
+                </p>
               </div>
             </div>
-          )}
+            {/* Progress bar */}
+            {totalCobro > 0 && (
+              <div className="mt-auto">
+                <div className="flex justify-between text-[10px] text-gray-500 mb-1.5">
+                  <span>Progreso de pago</span>
+                  <span className="font-medium text-gray-400">{pctPago}%</span>
+                </div>
+                <div className="w-full h-2.5 bg-black/30 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full animate-grow-width"
+                    style={{ width: `${Math.min(100, pctPago)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Summary stats */}
+          <div className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 sm:p-6 flex flex-col items-center justify-center text-center animate-fade-in-up stagger-1">
+            <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Deuda total</p>
+            <p className="text-3xl font-bold text-red-400">{fmt(totalPendiente)}</p>
+            <p className="text-xs text-gray-600 mt-2">{pendientes.length} {pendientes.length === 1 ? 'factura pendiente' : 'facturas pendientes'}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center justify-center text-center animate-fade-in-up stagger-2">
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Abonado</p>
+              <p className="text-2xl font-bold text-emerald-400">{fmt(totalAbonado)}</p>
+            </div>
+            <div className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 flex flex-col items-center justify-center text-center animate-fade-in-up stagger-3">
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Facturas</p>
+              <p className="text-2xl font-bold text-white">{pendientes.length}</p>
+            </div>
+          </div>
         </div>
 
         {/* Pending invoices */}
         {pendientes.length > 0 && (
           <section className="animate-fade-in-up stagger-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                 <Receipt size={15} className="text-red-400" />
                 Facturas pendientes
@@ -350,31 +354,29 @@ const ResellerPortal = () => {
                 {pendientes.length} {pendientes.length === 1 ? 'factura' : 'facturas'}
               </span>
             </div>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {pendientes.map((f, idx) => (
-                <div key={f.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-purple-500/20 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-300 animate-slide-in-right" style={{ animationDelay: `${0.4 + idx * 0.1}s` }}>
+                <div key={f.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-5 hover:border-purple-500/20 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-300 animate-slide-in-right" style={{ animationDelay: `${0.4 + idx * 0.08}s` }}>
                   {/* Client & date header */}
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <User size={14} className="text-purple-400 flex-shrink-0" />
-                        <span className="text-sm font-semibold text-white truncate">{f.cliente}</span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 ml-[22px]">
-                        <span className="flex items-center gap-1 text-[11px] text-gray-500">
-                          <Building2 size={10} />
-                          {f.empresa}
-                        </span>
-                        <span className="flex items-center gap-1 text-[11px] text-gray-500">
-                          <CalendarDays size={10} />
-                          {f.fechaDisplay || fmtDate(f.fechaISO)}
-                        </span>
-                      </div>
+                  <div className="mb-3">
+                    <div className="flex items-center gap-2">
+                      <User size={14} className="text-purple-400 flex-shrink-0" />
+                      <span className="text-sm font-semibold text-white truncate">{f.cliente}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 ml-[22px]">
+                      <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                        <Building2 size={10} />
+                        {f.empresa}
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                        <CalendarDays size={10} />
+                        {f.fechaDisplay || fmtDate(f.fechaISO)}
+                      </span>
                     </div>
                   </div>
 
                   {/* Amounts */}
-                  <div className="bg-black/20 rounded-xl p-3 sm:p-4 space-y-2.5">
+                  <div className="bg-black/20 rounded-xl p-4 space-y-2.5">
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-gray-500">Valor factura</span>
                       <span className="text-sm font-medium text-gray-300">{fmt(f.montoFactura || 0)}</span>
@@ -422,77 +424,80 @@ const ResellerPortal = () => {
           </section>
         )}
 
-        {/* Payment history */}
-        {pagosOrdenados.length > 0 && (
-          <section className="animate-fade-in-up stagger-6">
-            <h2 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-              <Clock size={15} className="text-emerald-400" />
-              Historial de pagos
-            </h2>
-            <div className="space-y-3">
-              {pagosOrdenados.map(p => (
-                <div key={p.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-emerald-500/20 transition-all duration-300">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-gray-500 flex items-center gap-1.5">
-                      <CalendarDays size={11} />
-                      {fmtDate(p.fecha)}
-                    </span>
-                    <span className="text-sm font-bold text-emerald-400">{fmt(p.montoTotal)}</span>
-                  </div>
-                  {p.distribucion && p.distribucion.length > 0 && (
-                    <div className="space-y-1.5 mt-2 pt-2 border-t border-white/5">
-                      {p.distribucion.map((d, i) => (
-                        <div key={i} className="flex justify-between text-xs">
-                          <span className="text-gray-500">
-                            {d.cliente} <span className="text-gray-600">({d.empresa})</span>
-                          </span>
-                          <span className={d.completada ? 'text-emerald-500 font-medium' : 'text-gray-400'}>
-                            {fmt(d.montoAplicado)}
-                            {d.completada && <CheckCircle2 size={10} className="inline ml-1 -mt-0.5" />}
-                          </span>
-                        </div>
-                      ))}
+        {/* Bottom section: Payment history + Paid invoices side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Payment history */}
+          {pagosOrdenados.length > 0 && (
+            <section className="animate-fade-in-up stagger-6">
+              <h2 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+                <Clock size={15} className="text-emerald-400" />
+                Historial de pagos
+              </h2>
+              <div className="space-y-3">
+                {pagosOrdenados.map(p => (
+                  <div key={p.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-emerald-500/20 transition-all duration-300">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                        <CalendarDays size={11} />
+                        {fmtDate(p.fecha)}
+                      </span>
+                      <span className="text-sm font-bold text-emerald-400">{fmt(p.montoTotal)}</span>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Paid invoices */}
-        {cobradas.length > 0 && (
-          <section className="animate-fade-in-up stagger-7">
-            <button
-              onClick={() => setShowPagadas(!showPagadas)}
-              className="w-full flex items-center justify-between py-3 px-4 rounded-2xl bg-[#151825] border border-white/[0.06] text-sm text-gray-400 hover:bg-[#1a1e30] transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <CheckCircle2 size={15} className="text-emerald-500/50" />
-                <span>Facturas pagadas</span>
-                <span className="text-[10px] bg-emerald-500/10 text-emerald-400/70 px-1.5 py-0.5 rounded-full">{cobradas.length}</span>
-              </span>
-              {showPagadas ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-            {showPagadas && (
-              <div className="mt-2 space-y-1.5">
-                {cobradas.slice(0, 20).map(f => (
-                  <div key={f.id} className="flex justify-between items-center py-2.5 px-4 rounded-xl bg-[#151825]/60 text-sm">
-                    <div className="min-w-0 flex-1">
-                      <span className="text-gray-400">{f.cliente}</span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-gray-600 text-[11px]">{f.empresa}</span>
-                        <span className="text-gray-700 text-[11px]">&middot;</span>
-                        <span className="text-gray-600 text-[11px]">{f.fechaDisplay || fmtDate(f.fechaISO)}</span>
+                    {p.distribucion && p.distribucion.length > 0 && (
+                      <div className="space-y-1.5 mt-2 pt-2 border-t border-white/5">
+                        {p.distribucion.map((d, i) => (
+                          <div key={i} className="flex justify-between text-xs">
+                            <span className="text-gray-500">
+                              {d.cliente} <span className="text-gray-600">({d.empresa})</span>
+                            </span>
+                            <span className={d.completada ? 'text-emerald-500 font-medium' : 'text-gray-400'}>
+                              {fmt(d.montoAplicado)}
+                              {d.completada && <CheckCircle2 size={10} className="inline ml-1 -mt-0.5" />}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                    <span className="text-emerald-500/50 font-medium text-xs">{fmt(f.cobroCliente || 0)}</span>
+                    )}
                   </div>
                 ))}
               </div>
-            )}
-          </section>
-        )}
+            </section>
+          )}
+
+          {/* Paid invoices */}
+          {cobradas.length > 0 && (
+            <section className="animate-fade-in-up stagger-7">
+              <button
+                onClick={() => setShowPagadas(!showPagadas)}
+                className="w-full flex items-center justify-between py-3 px-4 rounded-2xl bg-[#151825] border border-white/[0.06] text-sm text-gray-400 hover:bg-[#1a1e30] transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-emerald-500/50" />
+                  <span>Facturas pagadas</span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400/70 px-1.5 py-0.5 rounded-full">{cobradas.length}</span>
+                </span>
+                {showPagadas ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {showPagadas && (
+                <div className="mt-2 space-y-1.5">
+                  {cobradas.slice(0, 20).map(f => (
+                    <div key={f.id} className="flex justify-between items-center py-2.5 px-4 rounded-xl bg-[#151825]/60 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-gray-400">{f.cliente}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-gray-600 text-[11px]">{f.empresa}</span>
+                          <span className="text-gray-700 text-[11px]">&middot;</span>
+                          <span className="text-gray-600 text-[11px]">{f.fechaDisplay || fmtDate(f.fechaISO)}</span>
+                        </div>
+                      </div>
+                      <span className="text-emerald-500/50 font-medium text-xs">{fmt(f.cobroCliente || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
 
         {/* Contact prompt */}
         {totalPendiente > 0 && (
