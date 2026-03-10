@@ -237,9 +237,40 @@ const ResellerPortal = () => {
 
   return (
     <div className="min-h-screen bg-[#0f111a] text-gray-100">
+      {/* Animations CSS */}
+      <style>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInScale {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(30px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes growWidth {
+          from { width: 0%; }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out both; }
+        .animate-fade-in-scale { animation: fadeInScale 0.5s ease-out both; }
+        .animate-slide-in-right { animation: slideInRight 0.4s ease-out both; }
+        .animate-grow-width { animation: growWidth 1s ease-out 0.5s both; }
+        .stagger-1 { animation-delay: 0.1s; }
+        .stagger-2 { animation-delay: 0.2s; }
+        .stagger-3 { animation-delay: 0.3s; }
+        .stagger-4 { animation-delay: 0.4s; }
+        .stagger-5 { animation-delay: 0.5s; }
+        .stagger-6 { animation-delay: 0.6s; }
+        .stagger-7 { animation-delay: 0.7s; }
+        .stagger-8 { animation-delay: 0.8s; }
+      `}</style>
+
       {/* Header */}
       <header className="sticky top-0 z-10 bg-[#0f111a]/95 backdrop-blur-lg border-b border-white/5">
-        <div className="max-w-lg mx-auto px-4 py-3">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-purple-500/20">S</div>
@@ -259,15 +290,15 @@ const ResellerPortal = () => {
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-5 space-y-5">
         {/* Welcome card */}
-        <div className="bg-gradient-to-br from-purple-600/10 to-indigo-700/10 border border-purple-500/10 rounded-2xl p-5">
+        <div className="bg-gradient-to-br from-purple-600/10 to-indigo-700/10 border border-purple-500/10 rounded-2xl p-5 sm:p-6 animate-fade-in-scale">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-lg">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-purple-500/30">
               {resolvedName.charAt(0).toUpperCase()}
             </div>
             <div>
-              <p className="text-white font-semibold text-lg capitalize">{resolvedName}</p>
+              <p className="text-white font-semibold text-xl capitalize">{resolvedName}</p>
               <p className="text-gray-500 text-xs">
                 Actualizado {lastUpdate?.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/Bogota' }) || '—'}
               </p>
@@ -275,18 +306,18 @@ const ResellerPortal = () => {
           </div>
 
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-black/20 rounded-xl p-3 text-center">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-black/20 rounded-xl p-4 text-center animate-fade-in-up stagger-1">
               <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Deuda</p>
-              <p className="text-base font-bold text-red-400">{fmt(totalPendiente)}</p>
+              <p className="text-lg font-bold text-red-400">{fmt(totalPendiente)}</p>
             </div>
-            <div className="bg-black/20 rounded-xl p-3 text-center">
+            <div className="bg-black/20 rounded-xl p-4 text-center animate-fade-in-up stagger-2">
               <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Abonado</p>
-              <p className="text-base font-bold text-emerald-400">{fmt(totalAbonado)}</p>
+              <p className="text-lg font-bold text-emerald-400">{fmt(totalAbonado)}</p>
             </div>
-            <div className="bg-black/20 rounded-xl p-3 text-center">
+            <div className="bg-black/20 rounded-xl p-4 text-center animate-fade-in-up stagger-3">
               <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Facturas</p>
-              <p className="text-base font-bold text-white">{pendientes.length}</p>
+              <p className="text-lg font-bold text-white">{pendientes.length}</p>
             </div>
           </div>
 
@@ -297,9 +328,9 @@ const ResellerPortal = () => {
                 <span>Progreso de pago</span>
                 <span className="font-medium text-gray-400">{pctPago}%</span>
               </div>
-              <div className="w-full h-2 bg-black/30 rounded-full overflow-hidden">
+              <div className="w-full h-2.5 bg-black/30 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700"
+                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full animate-grow-width"
                   style={{ width: `${Math.min(100, pctPago)}%` }}
                 />
               </div>
@@ -309,7 +340,7 @@ const ResellerPortal = () => {
 
         {/* Pending invoices */}
         {pendientes.length > 0 && (
-          <section>
+          <section className="animate-fade-in-up stagger-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
                 <Receipt size={15} className="text-red-400" />
@@ -319,17 +350,17 @@ const ResellerPortal = () => {
                 {pendientes.length} {pendientes.length === 1 ? 'factura' : 'facturas'}
               </span>
             </div>
-            <div className="space-y-2.5">
-              {pendientes.map(f => (
-                <div key={f.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4 hover:border-white/10 transition-colors">
+            <div className="space-y-3">
+              {pendientes.map((f, idx) => (
+                <div key={f.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-purple-500/20 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-300 animate-slide-in-right" style={{ animationDelay: `${0.4 + idx * 0.1}s` }}>
                   {/* Client & date header */}
                   <div className="flex justify-between items-start mb-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <User size={13} className="text-gray-500 flex-shrink-0" />
+                        <User size={14} className="text-purple-400 flex-shrink-0" />
                         <span className="text-sm font-semibold text-white truncate">{f.cliente}</span>
                       </div>
-                      <div className="flex items-center gap-3 mt-1 ml-[21px]">
+                      <div className="flex items-center gap-3 mt-1 ml-[22px]">
                         <span className="flex items-center gap-1 text-[11px] text-gray-500">
                           <Building2 size={10} />
                           {f.empresa}
@@ -343,24 +374,24 @@ const ResellerPortal = () => {
                   </div>
 
                   {/* Amounts */}
-                  <div className="bg-black/20 rounded-xl p-3 space-y-2">
+                  <div className="bg-black/20 rounded-xl p-3 sm:p-4 space-y-2.5">
                     <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-gray-500">Valor factura</span>
-                      <span className="text-xs font-medium text-gray-300">{fmt(f.montoFactura || 0)}</span>
+                      <span className="text-xs text-gray-500">Valor factura</span>
+                      <span className="text-sm font-medium text-gray-300">{fmt(f.montoFactura || 0)}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-gray-500">Tu cobro</span>
-                      <span className="text-xs font-medium text-white">{fmt(f.cobroCliente || 0)}</span>
+                      <span className="text-xs text-gray-500">Valor a cobrar</span>
+                      <span className="text-sm font-medium text-white">{fmt(f.cobroCliente || 0)}</span>
                     </div>
                     {f.abono > 0 && (
                       <div className="flex justify-between items-center">
-                        <span className="text-[11px] text-gray-500">Abonado</span>
-                        <span className="text-xs font-medium text-emerald-400">-{fmt(f.abono)}</span>
+                        <span className="text-xs text-gray-500">Abonado</span>
+                        <span className="text-sm font-medium text-emerald-400">-{fmt(f.abono)}</span>
                       </div>
                     )}
-                    <div className="border-t border-white/5 pt-2 flex justify-between items-center">
-                      <span className="text-[11px] font-semibold text-gray-400">Saldo pendiente</span>
-                      <span className="text-sm font-bold text-red-400">{fmt(f.saldo)}</span>
+                    <div className="border-t border-white/5 pt-2.5 flex justify-between items-center">
+                      <span className="text-xs font-semibold text-gray-400">Saldo pendiente</span>
+                      <span className="text-base font-bold text-red-400">{fmt(f.saldo)}</span>
                     </div>
                   </div>
 
@@ -393,14 +424,14 @@ const ResellerPortal = () => {
 
         {/* Payment history */}
         {pagosOrdenados.length > 0 && (
-          <section>
+          <section className="animate-fade-in-up stagger-6">
             <h2 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
               <Clock size={15} className="text-emerald-400" />
               Historial de pagos
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {pagosOrdenados.map(p => (
-                <div key={p.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4">
+                <div key={p.id} className="bg-[#151825] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-emerald-500/20 transition-all duration-300">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs text-gray-500 flex items-center gap-1.5">
                       <CalendarDays size={11} />
@@ -431,7 +462,7 @@ const ResellerPortal = () => {
 
         {/* Paid invoices */}
         {cobradas.length > 0 && (
-          <section>
+          <section className="animate-fade-in-up stagger-7">
             <button
               onClick={() => setShowPagadas(!showPagadas)}
               className="w-full flex items-center justify-between py-3 px-4 rounded-2xl bg-[#151825] border border-white/[0.06] text-sm text-gray-400 hover:bg-[#1a1e30] transition-colors"
@@ -465,7 +496,7 @@ const ResellerPortal = () => {
 
         {/* Contact prompt */}
         {totalPendiente > 0 && (
-          <div className="bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/10 rounded-2xl p-4 text-center">
+          <div className="bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/10 rounded-2xl p-4 text-center animate-fade-in-up stagger-8">
             <Phone size={18} className="text-amber-400/60 mx-auto mb-2" />
             <p className="text-xs text-gray-400">
               Si tienes dudas sobre alguna factura, contacta al administrador.
