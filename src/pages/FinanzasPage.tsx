@@ -2502,9 +2502,11 @@ const FinanzasPage = () => {
                         (fechaObj.getMonth() - fechaInicio.getMonth())
                       );
 
-                      // Progreso esperado lineal
-                      if (mesesTotales > 0) {
-                        progresoEsperado = Math.min(100, (mesesTranscurridos / mesesTotales) * 100);
+                      // Progreso esperado lineal (basado en días para mayor precisión)
+                      const diasTotales = Math.max(1, Math.round((fechaObj.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24)));
+                      const diasTranscurridos = Math.max(0, Math.round((hoy.getTime() - fechaInicio.getTime()) / (1000 * 60 * 60 * 24)));
+                      if (diasTotales > 0) {
+                        progresoEsperado = Math.min(100, (diasTranscurridos / diasTotales) * 100);
                       }
 
                       // Ahorro mensual requerido para llegar a tiempo
@@ -2798,11 +2800,11 @@ const FinanzasPage = () => {
                                     <div className="grid grid-cols-2 gap-2 text-[10px]">
                                       <div className="bg-emerald-500/10 rounded-md px-2 py-1">
                                         <p className="text-gray-500">Interes acumulado</p>
-                                        <p className="font-mono text-emerald-400 font-medium">+{formatearDineroCorto(Math.round(cdtInfo.interesAcumulado))}</p>
+                                        <p className="font-mono text-emerald-400 font-medium">+{formatearDinero(Math.round(cdtInfo.interesAcumulado))}</p>
                                       </div>
                                       <div className="bg-amber-500/10 rounded-md px-2 py-1">
                                         <p className="text-gray-500">Al vencimiento</p>
-                                        <p className="font-mono text-amber-400 font-medium">{formatearDineroCorto(Math.round(cdtInfo.valorAlVencimiento))}</p>
+                                        <p className="font-mono text-amber-400 font-medium">{formatearDinero(Math.round(cdtInfo.valorAlVencimiento))}</p>
                                       </div>
                                     </div>
                                   </div>
