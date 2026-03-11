@@ -8,7 +8,7 @@ import {
   ShoppingBag, TrendingUp as TrendUp,
   Edit2, BarChart3, Filter, ArrowUpDown, Hash, Repeat, SortAsc, SortDesc,
   Gem,
-  Percent, History, RefreshCw, Coins
+  Percent, History, RefreshCw, Coins, AlertCircle
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { CATEGORIAS_GASTO } from '../utils/constants';
@@ -87,7 +87,9 @@ const FinanzasPage = () => {
   // Estados para bolsillos
   const [modalBolsillo, setModalBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
   const [formBolsillo, setFormBolsillo] = useState({
-    nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'otro', saldo: '', tasaRendimientoAnual: '11.5'
+    nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro', saldo: '', tasaRendimientoAnual: '11.5',
+    // CDT fields
+    fechaApertura: '', plazoMeses: '6', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' as 'compuesto' | 'simple'
   });
   const [modalAporteBolsillo, setModalAporteBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
 
@@ -98,6 +100,7 @@ const FinanzasPage = () => {
   // Tipos de bolsillos
   const TIPOS_BOLSILLO = [
     { tipo: 'nu', nombre: 'Nu Bank', icono: '💜', tasaDefault: 11.5 },
+    { tipo: 'cdt', nombre: 'CDT', icono: '📜', tasaDefault: 9.5 },
     { tipo: 'efectivo', nombre: 'Efectivo', icono: '💵', tasaDefault: 0 },
     { tipo: 'banco', nombre: 'Otro Banco', icono: '🏦', tasaDefault: 0 },
     { tipo: 'otro', nombre: 'Otro', icono: '📦', tasaDefault: 0 },
@@ -2675,7 +2678,7 @@ const FinanzasPage = () => {
                             <span className="text-xs font-medium text-gray-400">Bolsillos</span>
                             <button
                               onClick={() => {
-                                setFormBolsillo({ nombre: '', tipo: 'nu', saldo: '', tasaRendimientoAnual: '11.5' });
+                                setFormBolsillo({ nombre: '', tipo: 'nu', saldo: '', tasaRendimientoAnual: '11.5', fechaApertura: '', plazoMeses: '6', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' });
                                 setModalBolsillo({ visible: true, meta: metaOriginal, bolsillo: null });
                               }}
                               className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
@@ -2686,10 +2689,44 @@ const FinanzasPage = () => {
                           {meta.bolsillos.map(bolsillo => {
                             const porcentajeBolsillo = saldoTotal > 0 ? (bolsillo.saldo / saldoTotal) * 100 : 0;
                             const rendBolsillo = bolsillo.saldo * (bolsillo.tasaRendimientoAnual / 100) / 12;
+                            const esCDT = bolsillo.tipo === 'cdt';
+                            // CDT calculations
+                            const cdtInfo = esCDT && bolsillo.fechaVencimiento ? (() => {
+                              const hoy = new Date(getColombiaDateOnly());
+                              const vencimiento = new Date(bolsillo.fechaVencimiento + 'T12:00:00');
+                              const apertura = bolsillo.fechaApertura ? new Date(bolsillo.fechaApertura + 'T12:00:00') : null;
+                              const diasRestantes = Math.ceil((vencimiento.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+                              const capital = bolsillo.capitalInicial || bolsillo.saldo;
+                              const tasa = bolsillo.tasaRendimientoAnual / 100;
+                              const meses = bolsillo.plazoMeses || 6;
+                              const esSimple = bolsillo.tipoInteres === 'simple';
+                              const valorAlVencimiento = esSimple
+                                ? capital * (1 + tasa * meses / 12)
+                                : capital * Math.pow(1 + tasa / 12, meses);
+                              const interesesProyectados = valorAlVencimiento - capital;
+                              // Progreso temporal del CDT
+                              const totalDias = apertura ? Math.ceil((vencimiento.getTime() - apertura.getTime()) / (1000 * 60 * 60 * 24)) : meses * 30;
+                              const diasTranscurridos = apertura ? Math.ceil((hoy.getTime() - apertura.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+                              const progresoTemporal = totalDias > 0 ? Math.min(Math.max(diasTranscurridos / totalDias * 100, 0), 100) : 0;
+                              // Interés acumulado hasta hoy
+                              const mesesTranscurridos = diasTranscurridos / 30;
+                              const valorHoy = esSimple
+                                ? capital * (1 + tasa * Math.min(mesesTranscurridos, meses) / 12)
+                                : capital * Math.pow(1 + tasa / 12, Math.min(mesesTranscurridos, meses));
+                              const interesAcumulado = valorHoy - capital;
+                              const vencido = diasRestantes <= 0;
+                              const porVencer = !vencido && diasRestantes <= 30;
+                              return { diasRestantes, valorAlVencimiento, interesesProyectados, progresoTemporal, interesAcumulado, vencido, porVencer };
+                            })() : null;
+
                             return (
                               <div
                                 key={bolsillo.id}
-                                className="bg-black/30 rounded-lg p-3 border border-gray-700/30"
+                                className={`bg-black/30 rounded-lg p-3 border ${
+                                  esCDT && cdtInfo?.vencido ? 'border-red-500/40' :
+                                  esCDT && cdtInfo?.porVencer ? 'border-amber-500/40' :
+                                  esCDT ? 'border-amber-700/30' : 'border-gray-700/30'
+                                }`}
                               >
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center gap-2">
@@ -2697,7 +2734,10 @@ const FinanzasPage = () => {
                                     <div>
                                       <p className="font-medium text-sm">{bolsillo.nombre}</p>
                                       {bolsillo.tasaRendimientoAnual > 0 && (
-                                        <p className="text-xs text-gray-500">{bolsillo.tasaRendimientoAnual}% EA</p>
+                                        <p className="text-xs text-gray-500">
+                                          {bolsillo.tasaRendimientoAnual}% EA
+                                          {bolsillo.entidadFinanciera && ` · ${bolsillo.entidadFinanciera}`}
+                                        </p>
                                       )}
                                     </div>
                                   </div>
@@ -2706,6 +2746,68 @@ const FinanzasPage = () => {
                                     <p className="text-xs text-gray-500">{porcentajeBolsillo.toFixed(0)}% del total</p>
                                   </div>
                                 </div>
+
+                                {/* CDT Info Panel */}
+                                {esCDT && cdtInfo && (
+                                  <div className="mb-2 space-y-2">
+                                    {/* Status badge */}
+                                    <div className="flex items-center gap-2">
+                                      {cdtInfo.vencido ? (
+                                        <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full font-medium flex items-center gap-1">
+                                          <AlertCircle size={10} /> Vencido
+                                        </span>
+                                      ) : cdtInfo.porVencer ? (
+                                        <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded-full font-medium flex items-center gap-1">
+                                          <Clock size={10} /> {cdtInfo.diasRestantes}d para vencer
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full font-medium flex items-center gap-1">
+                                          <Clock size={10} /> {cdtInfo.diasRestantes}d restantes
+                                        </span>
+                                      )}
+                                      {bolsillo.renovacionAutomatica && (
+                                        <span className="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-medium">
+                                          Auto-renueva
+                                        </span>
+                                      )}
+                                      {(bolsillo.numeroRenovaciones || 0) > 0 && (
+                                        <span className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-medium">
+                                          Renov. #{bolsillo.numeroRenovaciones}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Progress bar temporal */}
+                                    <div>
+                                      <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                                        <span>{bolsillo.fechaApertura ? new Date(bolsillo.fechaApertura + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : ''}</span>
+                                        <span>{bolsillo.plazoMeses}m</span>
+                                        <span>{new Date(bolsillo.fechaVencimiento! + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                                      </div>
+                                      <div className="w-full bg-gray-800 rounded-full h-1.5">
+                                        <div
+                                          className={`h-1.5 rounded-full transition-all ${
+                                            cdtInfo.vencido ? 'bg-red-500' : cdtInfo.porVencer ? 'bg-amber-500' : 'bg-amber-400'
+                                          }`}
+                                          style={{ width: `${Math.min(cdtInfo.progresoTemporal, 100)}%` }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Interest info */}
+                                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                      <div className="bg-emerald-500/10 rounded-md px-2 py-1">
+                                        <p className="text-gray-500">Interes acumulado</p>
+                                        <p className="font-mono text-emerald-400 font-medium">+{formatearDineroCorto(Math.round(cdtInfo.interesAcumulado))}</p>
+                                      </div>
+                                      <div className="bg-amber-500/10 rounded-md px-2 py-1">
+                                        <p className="text-gray-500">Al vencimiento</p>
+                                        <p className="font-mono text-amber-400 font-medium">{formatearDineroCorto(Math.round(cdtInfo.valorAlVencimiento))}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Botones de acción del bolsillo */}
                                 <div className="flex gap-1.5 mt-2 pt-2 border-t border-gray-700/30">
                                   <button
@@ -2733,7 +2835,12 @@ const FinanzasPage = () => {
                                         nombre: bolsillo.nombre,
                                         tipo: bolsillo.tipo,
                                         saldo: bolsillo.saldo.toString(),
-                                        tasaRendimientoAnual: bolsillo.tasaRendimientoAnual.toString()
+                                        tasaRendimientoAnual: bolsillo.tasaRendimientoAnual.toString(),
+                                        fechaApertura: bolsillo.fechaApertura || '',
+                                        plazoMeses: (bolsillo.plazoMeses || 6).toString(),
+                                        renovacionAutomatica: bolsillo.renovacionAutomatica || false,
+                                        entidadFinanciera: bolsillo.entidadFinanciera || '',
+                                        tipoInteres: bolsillo.tipoInteres || 'compuesto'
                                       });
                                       setModalBolsillo({ visible: true, meta: metaOriginal, bolsillo });
                                     }}
@@ -2743,8 +2850,8 @@ const FinanzasPage = () => {
                                     <Edit2 size={12} />
                                   </button>
                                 </div>
-                                {/* Mini info de rendimiento */}
-                                {rendBolsillo > 0 && (
+                                {/* Mini info de rendimiento (non-CDT) */}
+                                {!esCDT && rendBolsillo > 0 && (
                                   <p className="text-xs text-blue-400/70 mt-1.5 flex items-center gap-1">
                                     <TrendingUp size={10} /> +{formatearDineroCorto(rendBolsillo)}/mes
                                   </p>
@@ -4169,10 +4276,11 @@ const FinanzasPage = () => {
                     <button
                       key={tipo.tipo}
                       onClick={() => setFormBolsillo({
-                        ...formBolsillo, 
-                        tipo: tipo.tipo, 
+                        ...formBolsillo,
+                        tipo: tipo.tipo,
                         nombre: tipo.nombre,
-                        tasaRendimientoAnual: tipo.tasaDefault.toString()
+                        tasaRendimientoAnual: tipo.tasaDefault.toString(),
+                        ...(tipo.tipo !== 'cdt' ? { fechaApertura: '', plazoMeses: '6', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' as const } : { fechaApertura: formBolsillo.fechaApertura || getColombiaDateOnly(), tipoInteres: formBolsillo.tipoInteres })
                       })}
                       className={`p-3 rounded-xl border transition-all flex items-center gap-2 ${
                         formBolsillo.tipo === tipo.tipo
@@ -4223,8 +4331,153 @@ const FinanzasPage = () => {
                   value={formBolsillo.tasaRendimientoAnual}
                   onChange={e => setFormBolsillo({...formBolsillo, tasaRendimientoAnual: e.target.value.replace(/[^0-9.]/g, '')})}
                 />
-                <p className="text-xs text-gray-500 mt-1">Nu ≈ 11.5%, Efectivo = 0%</p>
+                <p className="text-xs text-gray-500 mt-1">Nu ≈ 11.5%, CDT ≈ 9.5%, Efectivo = 0%</p>
               </div>
+
+              {/* Campos específicos CDT */}
+              {formBolsillo.tipo === 'cdt' && (
+                <>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Entidad financiera</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Bancolombia, Davivienda..."
+                      className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                      value={formBolsillo.entidadFinanciera}
+                      onChange={e => setFormBolsillo({...formBolsillo, entidadFinanciera: e.target.value})}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Fecha de apertura</label>
+                    <input
+                      type="date"
+                      className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                      value={formBolsillo.fechaApertura}
+                      onChange={e => setFormBolsillo({...formBolsillo, fechaApertura: e.target.value})}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Plazo (meses)</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {['3', '6', '12', '18'].map(plazo => (
+                        <button
+                          key={plazo}
+                          type="button"
+                          onClick={() => setFormBolsillo({...formBolsillo, plazoMeses: plazo})}
+                          className={`py-2 rounded-lg border text-sm font-medium transition-all ${
+                            formBolsillo.plazoMeses === plazo
+                              ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+                              : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:border-gray-600'
+                          }`}
+                        >
+                          {plazo}m
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Otro plazo..."
+                      className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 mt-2 font-mono focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                      value={!['3', '6', '12', '18'].includes(formBolsillo.plazoMeses) ? formBolsillo.plazoMeses : ''}
+                      onChange={e => setFormBolsillo({...formBolsillo, plazoMeses: e.target.value.replace(/[^0-9]/g, '')})}
+                    />
+                    {formBolsillo.fechaApertura && formBolsillo.plazoMeses && (
+                      <p className="text-xs text-amber-400/70 mt-1.5">
+                        Vence: {(() => {
+                          const apertura = new Date(formBolsillo.fechaApertura + 'T12:00:00');
+                          apertura.setMonth(apertura.getMonth() + parseInt(formBolsillo.plazoMeses));
+                          return apertura.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+                        })()}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Tipo de interés */}
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Tipo de interes</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormBolsillo({...formBolsillo, tipoInteres: 'compuesto'})}
+                        className={`p-3 rounded-xl border transition-all text-center ${
+                          formBolsillo.tipoInteres === 'compuesto'
+                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+                            : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:border-gray-600'
+                        }`}
+                      >
+                        <p className="text-sm font-medium">Compuesto</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Intereses generan intereses</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormBolsillo({...formBolsillo, tipoInteres: 'simple'})}
+                        className={`p-3 rounded-xl border transition-all text-center ${
+                          formBolsillo.tipoInteres === 'simple'
+                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+                            : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:border-gray-600'
+                        }`}
+                      >
+                        <p className="text-sm font-medium">Simple</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Intereses sobre capital inicial</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-[#0f111a] border border-gray-700/50 rounded-xl p-3">
+                    <div>
+                      <p className="text-sm font-medium">Renovacion automatica</p>
+                      <p className="text-xs text-gray-500">Se renueva al vencer con el mismo plazo</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormBolsillo({...formBolsillo, renovacionAutomatica: !formBolsillo.renovacionAutomatica})}
+                      className={`w-12 h-6 rounded-full transition-all relative ${
+                        formBolsillo.renovacionAutomatica ? 'bg-amber-500' : 'bg-gray-700'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all ${
+                        formBolsillo.renovacionAutomatica ? 'left-6' : 'left-0.5'
+                      }`} />
+                    </button>
+                  </div>
+
+                  {/* Preview de interés */}
+                  {formBolsillo.saldo && parseFloat(formBolsillo.tasaRendimientoAnual) > 0 && formBolsillo.plazoMeses && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                      <p className="text-xs font-medium text-amber-400 mb-2">
+                        Proyeccion interes {formBolsillo.tipoInteres === 'simple' ? 'simple' : 'compuesto'}
+                      </p>
+                      {(() => {
+                        const capital = parseInt(formBolsillo.saldo) || 0;
+                        const tasa = parseFloat(formBolsillo.tasaRendimientoAnual) / 100;
+                        const meses = parseInt(formBolsillo.plazoMeses) || 6;
+                        const valorFinal = formBolsillo.tipoInteres === 'simple'
+                          ? capital * (1 + tasa * meses / 12)
+                          : capital * Math.pow(1 + tasa / 12, meses);
+                        const intereses = valorFinal - capital;
+                        return (
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Capital</span>
+                              <span className="font-mono">{formatearDineroCorto(capital)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-400">Intereses ({meses}m)</span>
+                              <span className="font-mono text-emerald-400">+{formatearDineroCorto(Math.round(intereses))}</span>
+                            </div>
+                            <div className="flex justify-between border-t border-amber-500/20 pt-1 font-medium">
+                              <span className="text-amber-400">Al vencimiento</span>
+                              <span className="font-mono text-amber-400">{formatearDineroCorto(Math.round(valorFinal))}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </>
+              )}
 
               <div className="flex gap-3 pt-2">
                 {esEdicion && (
@@ -4269,12 +4522,28 @@ const FinanzasPage = () => {
                         const metaMigrada = migrarMetaABolsillos(m);
                         const bolsillosActualizados = metaMigrada.bolsillos.map(b => {
                           if (b.id !== bolsilloEditar.id) return b;
+                          const plazoMesesEdit = parseInt(formBolsillo.plazoMeses) || 6;
+                          const fechaAperturaEdit = formBolsillo.fechaApertura || b.fechaApertura || getColombiaDateOnly();
+                          const fechaVencimientoEdit = (() => {
+                            const d = new Date(fechaAperturaEdit + 'T12:00:00');
+                            d.setMonth(d.getMonth() + plazoMesesEdit);
+                            return d.toISOString().split('T')[0];
+                          })();
                           return {
                             ...b,
-                            nombre: formBolsillo.nombre || tipoBolsillo?.nombre || 'Bolsillo',
+                            nombre: formBolsillo.nombre || (formBolsillo.tipo === 'cdt' ? `CDT ${formBolsillo.entidadFinanciera || ''}`.trim() : tipoBolsillo?.nombre || 'Bolsillo'),
                             tipo: formBolsillo.tipo,
                             icono: tipoBolsillo?.icono || '📦',
-                            tasaRendimientoAnual: parseFloat(formBolsillo.tasaRendimientoAnual) || 0
+                            tasaRendimientoAnual: parseFloat(formBolsillo.tasaRendimientoAnual) || 0,
+                            ...(formBolsillo.tipo === 'cdt' ? {
+                              fechaApertura: fechaAperturaEdit,
+                              fechaVencimiento: fechaVencimientoEdit,
+                              plazoMeses: plazoMesesEdit,
+                              renovacionAutomatica: formBolsillo.renovacionAutomatica,
+                              capitalInicial: b.capitalInicial || b.saldo,
+                              entidadFinanciera: formBolsillo.entidadFinanciera || undefined,
+                              tipoInteres: formBolsillo.tipoInteres
+                            } : {})
                           };
                         });
                         return {
@@ -4284,9 +4553,17 @@ const FinanzasPage = () => {
                       }));
                     } else {
                       // Crear nuevo bolsillo
+                      const plazoMeses = parseInt(formBolsillo.plazoMeses) || 6;
+                      const fechaApertura = formBolsillo.fechaApertura || getColombiaDateOnly();
+                      const fechaVencimiento = (() => {
+                        const d = new Date(fechaApertura + 'T12:00:00');
+                        d.setMonth(d.getMonth() + plazoMeses);
+                        return d.toISOString().split('T')[0];
+                      })();
+
                       const nuevoBolsillo: Bolsillo = {
                         id: Date.now(),
-                        nombre: formBolsillo.nombre || tipoBolsillo?.nombre || 'Bolsillo',
+                        nombre: formBolsillo.nombre || (formBolsillo.tipo === 'cdt' ? `CDT ${formBolsillo.entidadFinanciera || ''}`.trim() : tipoBolsillo?.nombre || 'Bolsillo'),
                         icono: tipoBolsillo?.icono || '📦',
                         tipo: formBolsillo.tipo,
                         saldo: saldoInicial,
@@ -4296,8 +4573,19 @@ const FinanzasPage = () => {
                           fecha: getColombiaDateOnly(),
                           monto: saldoInicial,
                           tipo: 'aporte',
-                          nota: 'Saldo inicial'
-                        }] : []
+                          nota: formBolsillo.tipo === 'cdt' ? 'Capital inicial CDT' : 'Saldo inicial'
+                        }] : [],
+                        // CDT fields
+                        ...(formBolsillo.tipo === 'cdt' ? {
+                          fechaApertura,
+                          fechaVencimiento,
+                          plazoMeses,
+                          renovacionAutomatica: formBolsillo.renovacionAutomatica,
+                          capitalInicial: saldoInicial,
+                          entidadFinanciera: formBolsillo.entidadFinanciera || undefined,
+                          numeroRenovaciones: 0,
+                          tipoInteres: formBolsillo.tipoInteres
+                        } : {})
                       };
                       
                       setMetasFinancieras(prev => prev.map(m => {
