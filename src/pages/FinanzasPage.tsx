@@ -2479,8 +2479,17 @@ const FinanzasPage = () => {
                       else tendencia = 'estable';
                     }
 
-                    // Usar el promedio más realista (últimos 3 meses si hay datos, sino el total)
-                    const promedioMensualReal = promedioUltimos3Meses > 0 ? promedioUltimos3Meses : (saldoTotal / mesesTranscurridos);
+                    // Proyectar aporte del mes actual al mes completo
+                    const diaDelMes = hoy.getDate();
+                    const diasEnMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+                    const aporteMesActualProyectado = diaDelMes >= 25 ? aporteMesActual : (aporteMesActual / diaDelMes) * diasEnMes;
+
+                    // Usar el promedio más realista
+                    // Si hay meses anteriores, promediar con la proyección del mes actual
+                    // Si no hay meses anteriores (meta nueva), usar la proyección del mes actual
+                    const promedioMensualReal = promedioUltimos3Meses > 0
+                      ? (aporteMesActual > 0 ? (promedioUltimos3Meses + aporteMesActualProyectado) / 2 : promedioUltimos3Meses)
+                      : (aporteMesActual > 0 ? aporteMesActualProyectado : (saldoTotal / mesesTranscurridos));
 
                     // Si tiene fecha objetivo
                     let mesesHastaObjetivo = Infinity;
