@@ -161,6 +161,7 @@ export interface Bolsillo {
   capitalInicial?: number; // capital inicial para calcular interés compuesto
   entidadFinanciera?: string; // banco o entidad donde está el CDT
   numeroRenovaciones?: number; // cuántas veces se ha renovado
+  tipoInteres?: 'compuesto' | 'simple'; // tipo de interés del CDT
 }
 
 export interface MetaFinanciera {
