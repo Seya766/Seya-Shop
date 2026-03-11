@@ -148,11 +148,19 @@ export interface AporteMeta {
 export interface Bolsillo {
   id: number;
   nombre: string;
-  icono: string; // emoji (💜 Nu, 💵 Efectivo, 🏦 Banco, etc)
-  tipo: 'nu' | 'efectivo' | 'banco' | 'otro';
+  icono: string; // emoji (💜 Nu, 💵 Efectivo, 🏦 Banco, 📜 CDT, etc)
+  tipo: 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro';
   saldo: number;
-  tasaRendimientoAnual: number; // % EA (Nu ~11.5%, efectivo 0%)
+  tasaRendimientoAnual: number; // % EA (Nu ~11.5%, CDT ~9.5%, efectivo 0%)
   historialAportes: AporteMeta[];
+  // Campos específicos para CDT
+  fechaApertura?: string; // fecha de apertura del CDT
+  fechaVencimiento?: string; // fecha de vencimiento del CDT
+  plazoMeses?: number; // plazo en meses (3, 6, 12, etc)
+  renovacionAutomatica?: boolean; // si se renueva automáticamente al vencer
+  capitalInicial?: number; // capital inicial para calcular interés compuesto
+  entidadFinanciera?: string; // banco o entidad donde está el CDT
+  numeroRenovaciones?: number; // cuántas veces se ha renovado
 }
 
 export interface MetaFinanciera {
