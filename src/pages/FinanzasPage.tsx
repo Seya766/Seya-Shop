@@ -89,7 +89,7 @@ const FinanzasPage = () => {
   const [formBolsillo, setFormBolsillo] = useState({
     nombre: '', tipo: 'nu' as 'nu' | 'efectivo' | 'banco' | 'cdt' | 'otro', saldo: '', tasaRendimientoAnual: '11.5',
     // CDT fields
-    fechaApertura: '', plazoMeses: '6', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' as 'compuesto' | 'simple'
+    fechaApertura: '', fechaVencimiento: '', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' as 'compuesto' | 'simple'
   });
   const [modalAporteBolsillo, setModalAporteBolsillo] = useState<{ visible: boolean; meta: MetaFinanciera | null; bolsillo: Bolsillo | null }>({ visible: false, meta: null, bolsillo: null });
 
@@ -2678,7 +2678,7 @@ const FinanzasPage = () => {
                             <span className="text-xs font-medium text-gray-400">Bolsillos</span>
                             <button
                               onClick={() => {
-                                setFormBolsillo({ nombre: '', tipo: 'nu', saldo: '', tasaRendimientoAnual: '11.5', fechaApertura: '', plazoMeses: '6', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' });
+                                setFormBolsillo({ nombre: '', tipo: 'nu', saldo: '', tasaRendimientoAnual: '11.5', fechaApertura: '', fechaVencimiento: '', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' });
                                 setModalBolsillo({ visible: true, meta: metaOriginal, bolsillo: null });
                               }}
                               className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
@@ -2837,7 +2837,7 @@ const FinanzasPage = () => {
                                         saldo: bolsillo.saldo.toString(),
                                         tasaRendimientoAnual: bolsillo.tasaRendimientoAnual.toString(),
                                         fechaApertura: bolsillo.fechaApertura || '',
-                                        plazoMeses: (bolsillo.plazoMeses || 6).toString(),
+                                        fechaVencimiento: bolsillo.fechaVencimiento || '',
                                         renovacionAutomatica: bolsillo.renovacionAutomatica || false,
                                         entidadFinanciera: bolsillo.entidadFinanciera || '',
                                         tipoInteres: bolsillo.tipoInteres || 'compuesto'
@@ -4280,7 +4280,7 @@ const FinanzasPage = () => {
                         tipo: tipo.tipo,
                         nombre: tipo.nombre,
                         tasaRendimientoAnual: tipo.tasaDefault.toString(),
-                        ...(tipo.tipo !== 'cdt' ? { fechaApertura: '', plazoMeses: '6', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' as const } : { fechaApertura: formBolsillo.fechaApertura || getColombiaDateOnly(), tipoInteres: formBolsillo.tipoInteres })
+                        ...(tipo.tipo !== 'cdt' ? { fechaApertura: '', fechaVencimiento: '', renovacionAutomatica: false, entidadFinanciera: '', tipoInteres: 'compuesto' as const } : { fechaApertura: formBolsillo.fechaApertura || getColombiaDateOnly(), tipoInteres: formBolsillo.tipoInteres })
                       })}
                       className={`p-3 rounded-xl border transition-all flex items-center gap-2 ${
                         formBolsillo.tipo === tipo.tipo
@@ -4359,36 +4359,48 @@ const FinanzasPage = () => {
                   </div>
 
                   <div>
-                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Plazo (meses)</label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {['3', '6', '12', '18'].map(plazo => (
+                    <label className="text-xs text-gray-500 block mb-1.5 font-medium">Fecha de vencimiento</label>
+                    <input
+                      type="date"
+                      className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                      value={formBolsillo.fechaVencimiento}
+                      min={formBolsillo.fechaApertura || undefined}
+                      onChange={e => setFormBolsillo({...formBolsillo, fechaVencimiento: e.target.value})}
+                    />
+                    <div className="flex gap-2 mt-2">
+                      {[3, 6, 12, 18].map(m => (
                         <button
-                          key={plazo}
+                          key={m}
                           type="button"
-                          onClick={() => setFormBolsillo({...formBolsillo, plazoMeses: plazo})}
-                          className={`py-2 rounded-lg border text-sm font-medium transition-all ${
-                            formBolsillo.plazoMeses === plazo
+                          onClick={() => {
+                            const base = formBolsillo.fechaApertura || getColombiaDateOnly();
+                            const d = new Date(base + 'T12:00:00');
+                            d.setMonth(d.getMonth() + m);
+                            setFormBolsillo({...formBolsillo, fechaApertura: base, fechaVencimiento: d.toISOString().split('T')[0]});
+                          }}
+                          className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                            (() => {
+                              if (!formBolsillo.fechaApertura || !formBolsillo.fechaVencimiento) return false;
+                              const a = new Date(formBolsillo.fechaApertura + 'T12:00:00');
+                              const v = new Date(formBolsillo.fechaVencimiento + 'T12:00:00');
+                              const diff = (v.getFullYear() - a.getFullYear()) * 12 + v.getMonth() - a.getMonth();
+                              return diff === m && a.getDate() === v.getDate();
+                            })()
                               ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
                               : 'bg-gray-800/50 border-gray-700/50 text-gray-400 hover:border-gray-600'
                           }`}
                         >
-                          {plazo}m
+                          {m}m
                         </button>
                       ))}
                     </div>
-                    <input
-                      type="text"
-                      placeholder="Otro plazo..."
-                      className="w-full bg-[#0f111a] border border-gray-700/50 rounded-xl p-3 mt-2 font-mono focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
-                      value={!['3', '6', '12', '18'].includes(formBolsillo.plazoMeses) ? formBolsillo.plazoMeses : ''}
-                      onChange={e => setFormBolsillo({...formBolsillo, plazoMeses: e.target.value.replace(/[^0-9]/g, '')})}
-                    />
-                    {formBolsillo.fechaApertura && formBolsillo.plazoMeses && (
+                    {formBolsillo.fechaApertura && formBolsillo.fechaVencimiento && (
                       <p className="text-xs text-amber-400/70 mt-1.5">
-                        Vence: {(() => {
-                          const apertura = new Date(formBolsillo.fechaApertura + 'T12:00:00');
-                          apertura.setMonth(apertura.getMonth() + parseInt(formBolsillo.plazoMeses));
-                          return apertura.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+                        Plazo: {(() => {
+                          const a = new Date(formBolsillo.fechaApertura + 'T12:00:00');
+                          const v = new Date(formBolsillo.fechaVencimiento + 'T12:00:00');
+                          const meses = Math.round((v.getTime() - a.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+                          return meses >= 12 ? `${Math.floor(meses/12)} año${Math.floor(meses/12) > 1 ? 's' : ''} ${meses % 12 > 0 ? `y ${meses % 12} mes${meses % 12 > 1 ? 'es' : ''}` : ''}` : `${meses} mes${meses > 1 ? 'es' : ''}`;
                         })()}
                       </p>
                     )}
@@ -4444,7 +4456,7 @@ const FinanzasPage = () => {
                   </div>
 
                   {/* Preview de interés */}
-                  {formBolsillo.saldo && parseFloat(formBolsillo.tasaRendimientoAnual) > 0 && formBolsillo.plazoMeses && (
+                  {formBolsillo.saldo && parseFloat(formBolsillo.tasaRendimientoAnual) > 0 && formBolsillo.fechaApertura && formBolsillo.fechaVencimiento && (
                     <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
                       <p className="text-xs font-medium text-amber-400 mb-2">
                         Proyeccion interes {formBolsillo.tipoInteres === 'simple' ? 'simple' : 'compuesto'}
@@ -4452,7 +4464,9 @@ const FinanzasPage = () => {
                       {(() => {
                         const capital = parseInt(formBolsillo.saldo) || 0;
                         const tasa = parseFloat(formBolsillo.tasaRendimientoAnual) / 100;
-                        const meses = parseInt(formBolsillo.plazoMeses) || 6;
+                        const a = new Date(formBolsillo.fechaApertura + 'T12:00:00');
+                        const v = new Date(formBolsillo.fechaVencimiento + 'T12:00:00');
+                        const meses = Math.max(1, Math.round((v.getTime() - a.getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
                         const valorFinal = formBolsillo.tipoInteres === 'simple'
                           ? capital * (1 + tasa * meses / 12)
                           : capital * Math.pow(1 + tasa / 12, meses);
@@ -4522,13 +4536,15 @@ const FinanzasPage = () => {
                         const metaMigrada = migrarMetaABolsillos(m);
                         const bolsillosActualizados = metaMigrada.bolsillos.map(b => {
                           if (b.id !== bolsilloEditar.id) return b;
-                          const plazoMesesEdit = parseInt(formBolsillo.plazoMeses) || 6;
                           const fechaAperturaEdit = formBolsillo.fechaApertura || b.fechaApertura || getColombiaDateOnly();
-                          const fechaVencimientoEdit = (() => {
+                          const fechaVencimientoEdit = formBolsillo.fechaVencimiento || b.fechaVencimiento || (() => {
                             const d = new Date(fechaAperturaEdit + 'T12:00:00');
-                            d.setMonth(d.getMonth() + plazoMesesEdit);
+                            d.setMonth(d.getMonth() + 6);
                             return d.toISOString().split('T')[0];
                           })();
+                          const aEdit = new Date(fechaAperturaEdit + 'T12:00:00');
+                          const vEdit = new Date(fechaVencimientoEdit + 'T12:00:00');
+                          const plazoMesesEdit = Math.max(1, Math.round((vEdit.getTime() - aEdit.getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
                           return {
                             ...b,
                             nombre: formBolsillo.nombre || (formBolsillo.tipo === 'cdt' ? `CDT ${formBolsillo.entidadFinanciera || ''}`.trim() : tipoBolsillo?.nombre || 'Bolsillo'),
@@ -4553,13 +4569,15 @@ const FinanzasPage = () => {
                       }));
                     } else {
                       // Crear nuevo bolsillo
-                      const plazoMeses = parseInt(formBolsillo.plazoMeses) || 6;
                       const fechaApertura = formBolsillo.fechaApertura || getColombiaDateOnly();
-                      const fechaVencimiento = (() => {
+                      const fechaVencimiento = formBolsillo.fechaVencimiento || (() => {
                         const d = new Date(fechaApertura + 'T12:00:00');
-                        d.setMonth(d.getMonth() + plazoMeses);
+                        d.setMonth(d.getMonth() + 6);
                         return d.toISOString().split('T')[0];
                       })();
+                      const aCalc = new Date(fechaApertura + 'T12:00:00');
+                      const vCalc = new Date(fechaVencimiento + 'T12:00:00');
+                      const plazoMeses = Math.max(1, Math.round((vCalc.getTime() - aCalc.getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
 
                       const nuevoBolsillo: Bolsillo = {
                         id: Date.now(),
