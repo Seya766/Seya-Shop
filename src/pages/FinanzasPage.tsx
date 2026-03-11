@@ -4252,7 +4252,7 @@ const FinanzasPage = () => {
         
         return (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-[#1a1f33] to-[#0f1219] w-full max-w-md rounded-2xl border border-cyan-500/30 shadow-2xl shadow-cyan-500/10 p-6 animate-in fade-in zoom-in duration-200">
+          <div className="bg-gradient-to-br from-[#1a1f33] to-[#0f1219] w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-cyan-500/30 shadow-2xl shadow-cyan-500/10 p-6 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <div className="p-2 bg-cyan-500/20 rounded-lg">
